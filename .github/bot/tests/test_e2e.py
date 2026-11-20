@@ -11,7 +11,7 @@ import gitdata
 import render
 import common
 import rfqueue
-from simulate import PIN, World, commit_tree, git, good_root, make_result
+from simulate import PIN, REPO, World, commit_tree, git, good_root, make_result
 
 
 class E2E(unittest.TestCase):
@@ -169,14 +169,14 @@ class E2E(unittest.TestCase):
         self.assertIsNone(self.w.evaluate(lambda e, run: make_result(run))[0])
         e, p = self.w.evaluate(lambda e, run: make_result(run, "REJECT"), force=1)
         self.assertEqual(p["status"], "rejected")
-        self.g.open_pr(2, "bob", good_root("beta"))
+        self.g.open_pr(2, "bob", good_root("beta", "b"))
         self.w.intake(2)
         self.w.run += 1
         dead = flows.select(self.w.ctx(self.w.run))
         e, p = self.w.evaluate(lambda e, run: make_result(run, S=3.0))
         self.assertEqual((e["id"], e["attempts"], p["status"]), (dead["id"], 2, "record"))
         self.assertIsNone(flows.publish(self.w.ctx(dead["run_url"].rsplit("/", 1)[1]), dead["id"], None))
-        self.g.open_pr(3, "carol", good_root("gamma"))
+        self.g.open_pr(3, "carol", good_root("gamma", "c"))
         self.w.intake(3)
         e, p = self.w.evaluate(lambda e, run: dict(make_result(run, S=0.1), harness_commit="b" * 40))
         self.assertEqual((p["status"], p["verified"]), ("queued", False))
@@ -424,8 +424,11 @@ class E2E(unittest.TestCase):
                          (8.6, rec["id"], counted))
         self.assertAlmostEqual(common.track_scores(p["score"])["every"], 8.6 * 2 ** (80000 / 2 ** 19))   # S_every: the largest proof
         self.assertTrue(any(x.startswith("confirmed:") for x in p["reasons"]))
-        self.assertEqual((p["confirmation"]["status"], p["result"], p["confirmation"]["result"]),
-                         ("record", f"results/{p['id']}.json", f"results/{p['id']}-confirm.json"))
+        # the record's score is the confirmation's (the worse run): its run link and result JSON too
+        self.assertEqual((p["confirmation"]["status"], p["result"], p["confirmation"]["result"], p["confirmation"]["score_run"]),
+                         ("record", f"results/{p['id']}-confirm.json", f"results/{p['id']}-confirm.json", "confirmation"))
+        self.assertEqual((p["run_url"], json.loads(self.w.show(f"data:{p['result']}"))["score"]["S"]),
+                         (p["confirmation"]["run"], 8.6))
         self.assertIsNotNone(self.w.show(f"data:results/{p['id']}-confirm.json"))
         self.assertNotIn("confirm", p)
         r = json.loads(self.w.show("main:records.json"))
@@ -435,8 +438,9 @@ class E2E(unittest.TestCase):
         self.assertEqual(e["pr"], 3)                                          # then the fair order
 
     def test_confirmation_that_does_not_beat_is_accepted(self):
-        """A confirmation that does not beat the standing record by the margin (or is not an
-        ACCEPT) leaves the candidate `accepted`, and the comment says why."""
+        """A confirmation that does not beat the standing record by the margin leaves the candidate
+        `accepted`; one that is not an ACCEPT gives it its own status (a REJECT: `rejected`); the
+        comment says why."""
         rec = self.record_at()
         self.g.open_pr(2, "bob", good_root("r2", "2"))
         self.w.intake(2)
@@ -450,8 +454,9 @@ class E2E(unittest.TestCase):
         self.w.intake(3)
         e, p = self.w.evaluate(self.win(S=8.0, prover="3" * 64),
                                again=lambda e, run: make_result(run, "REJECT", harness=self.w.pin))
-        self.assertEqual((e["pr"], p["status"], p["verdict"], p["record_in"]), (3, "accepted", "REJECT", []))
-        self.assertTrue(any("its verdict is REJECT" in x for x in p["reasons"]))
+        self.assertEqual((e["pr"], p["status"], p["verdict"], p["record_in"]), (3, "rejected", "REJECT", []))
+        self.assertTrue(any("its verdict is REJECT" in x for x in p["reasons"]))       # the confirmation's verdict
+        self.assertIn("REJECT", self.head_status(3)["description"])
 
     def test_confirmation_error_is_requeued_like_a_port(self):
         """A confirmation that ends on the organiser's side stays pending: re-queued in front (a
@@ -820,10 +825,12 @@ class E2E(unittest.TestCase):
         """A REJECT at a badge check that used the record build cache is evaluated once more without
         it; if the clean rebuild's badge is byte-identical, the cache cannot have caused the failed
         check: the first REJECT stands and the retry's ACCEPT is discarded (an entry that fails a check
-        on purpose gets no second draw). With another badge, the retry's verdict stands."""
+        on purpose gets no second draw). With another badge, the badge build is not reproducible or the
+        cache held another build: the organiser's question, so the entry waits in `error` for the owner
+        (never a second draw). With a badge unknown on one side, the retry's verdict stands."""
         b1, b2 = {"verify": "1" * 64}, {"verify": "2" * 64}
         cert = lambda b: {"certificate": {"record_cache": {"restored": ["AlphaX"]}, "badge_sha256": b}}  # noqa: E731
-        for n, again, want in ((1, b1, "rejected"), (2, b2, "record")):
+        for n, again, want in ((1, b1, "rejected"), (2, b2, "error"), (3, None, "accepted")):
             self.g.open_pr(n, f"a{n}", good_root(f"r{n}", str(n)))
             self.w.intake(n)
             e, p = self.w.evaluate(lambda e, run: dict(make_result(run, "REJECT", reject_stage="check"), **cert(b1)))
@@ -838,19 +845,28 @@ class E2E(unittest.TestCase):
                 self.assertTrue(any("byte-identical badge" in r for r in p["reasons"]))
                 self.assertIn("REJECT", self.head_status(n)["description"])
                 self.assertIsNotNone(self.w.show(f"data:results/{p['id']}-nocache.json"))
+            elif want == "error":
+                self.assertTrue(any(r.startswith("organiser question: the evaluation without the record build cache")
+                                    for r in p["reasons"]))
+                self.assertEqual((p["record_in"], p["verdict"]), ([], "ACCEPT"))
+                self.assertIn("waiting on the organiser", self.head_status(n)["description"])
+                self.assertNotIn("paused", self.w.state())                           # not an organiser error
+                e, p = self.w.evaluate(lambda e, run: make_result(run, S=5.0 + n, harness=self.w.pin, prover=str(n) * 64),
+                                       force=n)                                      # the owner's forced run decides
+                self.assertEqual((e["pr"], p["status"]), (n, "record"))
             else:
-                self.assertTrue(any("another badge" in c[1] for c in self.g.comments))     # the retry's own comment
+                self.assertTrue(any("a badge is unknown" in c[1] for c in self.g.comments))   # the retry's own comment
 
     def test_confirmation_reject_in_a_timed_pass_is_final(self):
         """A record candidate's confirmation REJECTed in a timed pass, with the cache used: no retry,
-        the candidate is `accepted`."""
+        the candidate is `rejected` (its status follows the confirmation's verdict)."""
         self.record_at()
         self.g.open_pr(2, "bob", good_root("r2", "2"))
         self.w.intake(2)
         used = {"certificate": {"record_cache": {"restored": ["AlphaX"]}}}
         e, p = self.w.evaluate(self.win(S=8.0), again=lambda e, run: dict(
             make_result(run, "REJECT", harness=self.w.pin, reject_stage="timed-pass"), **used))
-        self.assertEqual((e["pr"], p["status"], p["record_in"]), (2, "accepted", []))
+        self.assertEqual((e["pr"], p["status"], p["record_in"]), (2, "rejected", []))
         self.assertTrue(any("verdict is REJECT" in r for r in p["reasons"]))
         self.assertFalse(any("without it" in r for r in p["reasons"]))
 
@@ -863,6 +879,93 @@ class E2E(unittest.TestCase):
         self.assertEqual((p["status"], p["attempts"]), ("queued", 0))
         self.assertTrue(any("a malformed stream record" in r for r in p["reasons"]))
         self.assertEqual([x["kind"] for x in self.w.state()["error_streak"]], ["malformed"])
+
+    def test_a_copied_prover_never_snipes_its_author(self):
+        """The heavy review's snipe.py, end to end. Alice evaluated recently, so a copier who never
+        was goes first in the fair order. A copy of her queued prover/ (under new NOTES, or another
+        root name) is invalid at intake; a copy with one comment changed in the `.s` (a new prover/
+        tree, the same binary) runs first and takes the record, but alice's run of that binary is not
+        barred by it: bob's record is set aside, she is compared as if it had not been taken, and when
+        she takes the record bob's is retired. Her own prover under a new root stays valid."""
+        self.g.open_pr(1, "alice", good_root("a0", "0"))
+        self.w.intake(1)
+        self.w.evaluate(lambda e, run: make_result(run, "REJECT"))
+        self.g.open_pr(2, "alice", good_root("idea", "2"))
+        self.w.intake(2)
+        self.g.open_pr(3, "bob", good_root("idea", "2", notes="# idea\n\nAgent: mine\n"))
+        self.assertEqual(self.w.intake(3), "invalid")
+        self.assertIn("the same prover/ as", self.entry(3)["reasons"][0])
+        self.g.open_pr(4, "bob", good_root("other", "2"))
+        self.assertEqual(self.w.intake(4), "invalid")
+        files = good_root("bobs", "2")
+        files["submissions/bobs/prover/prover.s"] += b"# a comment\n"
+        self.g.open_pr(5, "bob", files)
+        self.assertEqual(self.w.intake(5), "valid")
+        self.g.open_pr(6, "alice", good_root("idea2", "2"))
+        self.assertEqual(self.w.intake(6), "valid")                          # her own prover, a new root
+        same = lambda S: lambda e, run: make_result(run, S=S, harness=self.w.pin, prover="c" * 64)  # noqa: E731
+        e, bob = self.w.evaluate(same(10.0))
+        self.assertEqual((e["pr"], bob["status"]), (5, "record"))
+        e, p = self.w.evaluate(same(10.1))
+        self.assertEqual((e["pr"], p["status"], p["record_in"]), (2, "record", ["final", "every"]))
+        self.assertTrue(any("set aside" in r and bob["id"] in r for r in p["reasons"]))
+        st = self.w.state()
+        self.assertEqual((rfqueue.find(st, bob["id"])["status"], rfqueue.standing(st, self.w.pin)["final"]["id"]),
+                         ("retired", p["id"]))
+        e, p6 = self.w.evaluate(same(9.0))
+        self.assertEqual((e["pr"], p6["status"]), (6, "accepted"))             # her own record's binary: barred
+        self.assertTrue(any("never a new record" in r for r in p6["reasons"]))
+
+    def test_the_head_must_be_in_the_authors_repository(self):
+        """A pull request opened from another user's branch is invalid: its opener is not the author
+        of its head, and would otherwise be first with that user's root."""
+        self.g.open_pr(1, "bob", good_root("alpha", "1"), head_owner="alice")
+        self.assertEqual(self.w.intake(1), "invalid")
+        self.assertIn("in alice's repository, not the author's (bob)", self.entry(1)["reasons"][0])
+        self.g.open_pr(2, "alice", good_root("alpha", "1"))
+        self.assertEqual(self.w.intake(2), "valid")                          # alice's own is not a copy
+
+    def test_a_run_with_no_result_counts_as_an_unnamed_error(self):
+        """A run with no result at all may be the entry's doing: like an unnamed ERROR it does not
+        count in the fair order the first time, and does the second."""
+        self.g.open_pr(1, "alice", good_root("alpha", "1"))
+        self.w.intake(1)
+        e, p = self.w.evaluate(lambda e, run: None)
+        self.assertEqual((p["status"], p["counted_at"], p["generic_errors"]), ("queued", None, 1))
+        e, p = self.w.evaluate(lambda e, run: None)
+        self.assertEqual((p["status"], p["generic_errors"]), ("error", 2))
+        self.assertIsNotNone(p["counted_at"])
+
+    def test_a_result_of_another_commit_is_the_organisers(self):
+        """A result that names the commit it measured (a core that writes `entry.sha`, `entry.tree`)
+        must name the selected entry's, or it is an organiser error (an unverified result); without
+        those fields (an older core) nothing is compared."""
+        self.g.open_pr(1, "alice", good_root("alpha", "1"))
+        self.w.intake(1)
+        e, p = self.w.evaluate(lambda e, run: dict(make_result(run, S=5.0), entry={"sha": "0" * 40}))
+        self.assertEqual((p["status"], p["verified"]), ("queued", False))
+        self.assertTrue(any("measured the commit 0000" in r for r in p["reasons"]))
+        right = lambda e, run: dict(make_result(run, S=5.0), entry={  # noqa: E731
+            "sha": e["sha"], "tree": e["tree"], "name": f"{REPO}:submissions/{e['root']}"})
+        e, p = self.w.evaluate(right)
+        self.assertEqual((p["status"], p["verified"]), ("record", True))
+        self.assertIsNone(flows.entry_mismatch({"entry": {"name": "x"}}, e, REPO))
+        self.assertIn("names the entry", flows.entry_mismatch({"entry": {"sha": e["sha"], "name": "x"}}, e, REPO))
+        self.assertIn("tree", flows.entry_mismatch({"entry": {"sha": e["sha"], "tree": "1" * 40}}, e, REPO))
+
+    def test_sync_writes_what_it_examined_within_its_budget(self):
+        """Past its time budget a sync stops examining heads, writes what it has and dispatches the
+        next sync, which goes on: no number of slow heads keeps `data` from being written."""
+        for n in (1, 2, 3):
+            self.g.open_pr(n, f"a{n}", good_root(f"r{n}", str(n)))
+        ticks = iter([0, 0, flows.SYNC_BUDGET_S + 1] + [flows.SYNC_BUDGET_S + 1] * 10)
+        ctx = self.w.ctx()
+        ctx.monotonic = lambda: next(ticks)
+        flows.sync(ctx)
+        self.assertEqual([x["pr"] for x in self.w.state()["submissions"]], [1])
+        self.assertIn(("sync.yml", "main"), self.g.dispatches)
+        flows.sync(self.w.ctx())
+        self.assertEqual(sorted(x["pr"] for x in self.w.state()["submissions"]), [1, 2, 3])
 
     def test_unreadable_data_fails_closed(self):
         """An oversized or foreign submissions.json stops every step and changes neither `data` nor

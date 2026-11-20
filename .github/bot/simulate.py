@@ -75,11 +75,12 @@ class FakeGitHub:
     def main(self):
         return git(self.bare, "rev-parse", "refs/heads/main")
 
-    def open_pr(self, n, author, files, title="entry", draft=False, labels=(), modes=None, base="main"):
+    def open_pr(self, n, author, files, title="entry", draft=False, labels=(), modes=None, base="main", head_owner=None):
         sha = commit_tree(self.bare, self.main(), files, f"PR {n}", modes)
         git(self.bare, "update-ref", f"refs/pull/{n}/head", sha)
         self.prs[n] = {"number": n, "state": "open", "draft": draft, "title": title, "user": {"login": author},
-                       "head": {"sha": sha}, "base": {"ref": base}, "labels": [{"name": x} for x in labels],
+                       "head": {"sha": sha, "repo": {"owner": {"login": head_owner or author}}}, "base": {"ref": base},
+                       "labels": [{"name": x} for x in labels],
                        "created_at": "2026-11-03T00:00:00Z", "_base_sha": self.main()}
         return sha
 
@@ -356,6 +357,12 @@ def main():
         print("records.json:", rec["core"][:8], {t: r and r["id"] for t, r in rec["record"].items()},
               "history:", {t: [h["id"] + ":" + h["status"] for h in hs] for t, hs in rec["history"].items()})
         print("main roots:", git(w.bare, "ls-tree", "--name-only", "main", "submissions/").split())
+        # copies: another author's root with an earlier entry's prover/ (new NOTES, a new root name) is
+        # invalid, and so is a PR opened from another user's branch
+        g.open_pr(17, "mallory", good_root("mine", "16", notes="# mine\n\nAgent: x\n"))
+        print("a copied prover/:", w.intake(17), "|", w.state()["submissions"][-1]["reasons"][0])
+        g.open_pr(18, "mallory", good_root("theirs", "18"), head_owner="heidi")
+        print("another user's branch:", w.intake(18), "|", w.state()["submissions"][-1]["reasons"][0][:90])
         print("comments:", len(g.comments), "statuses:", len(g.status_log), "dispatches:", len(g.dispatches))
         print("queue:", [(x["id"], x["status"]) for x in w.state()["submissions"]])
     finally:

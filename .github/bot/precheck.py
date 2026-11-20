@@ -56,12 +56,13 @@ def _utf8(b):
 
 
 def tree_rule(repo, sha, root):
-    """(reasons, info) for `submissions/<root>` at `sha`. info: tree, notes, readme (bytes or None),
-    files, bytes."""
+    """(reasons, info) for `submissions/<root>` at `sha`. info: tree (the root's tree id),
+    prover_tree (its `prover/`'s, or None), notes, readme (bytes or None), files, bytes."""
     base = f"submissions/{root}"
-    info = {"tree": repo.tree_of(sha, base), "notes": None, "readme": None, "files": 0, "bytes": 0}
+    info = {"tree": repo.tree_of(sha, base), "prover_tree": None, "notes": None, "readme": None, "files": 0, "bytes": 0}
     if info["tree"] is None:
         return [f"{base}/ does not exist at the head commit"], info
+    info["prover_tree"] = repo.tree_of(sha, f"{base}/prover")     # the copy rule's second key (rfqueue.duplicate_of)
     reasons, blobs = [], {}
     caps = ENTRY_CAPS
     count, total = {"lean": 0, "prover": 0}, {"lean": 0, "prover": 0}

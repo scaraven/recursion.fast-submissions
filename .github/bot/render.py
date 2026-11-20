@@ -96,21 +96,30 @@ def publish_comment(e, run_url):
     head = f"**recursion.fast: {e.get('verdict') or 'ERROR'}, {word}** (`{e['id']}`, [run]({run_url}))"
     lines = [head, ""]
     if e.get("verdict") in ("ACCEPT", "PROVISIONAL") and s:
-        x = lambda k: num(s.get(k))  # noqa: E731
+        # a confirmed record whose two tracks keep different runs: a track in `by_track` has all its
+        # parts from its own run (decide.confirmed)
+        by = s.get("by_track") if isinstance(s.get("by_track"), dict) else {}
+        sf = by.get("final") if isinstance(by.get("final"), dict) else s
+        se = by.get("every") if isinstance(by.get("every"), dict) else s
         m = s.get("M") if is_num(s.get("M")) else "-"
         trunc = ", truncated stream" if e.get("truncated") else ""
         ref = size_ref_text(s.get("size_ref"))
-        lines.append(f"S = {x('S')} s = P_total {x('P_total_s')} s × size factor {x('size_factor')} "
-                     f"(final: 2^(|π_M|/{ref}), final proof {num(s.get('final_pi_bytes'), 0)} bytes), M = {m}{trunc}")
+        other = " (the other run's)" if by else ""
+        lines.append(f"S = {num(sf.get('S'))} s = P_total {num(sf.get('P_total_s'))} s × size factor "
+                     f"{num(sf.get('size_factor'))} (final: 2^(|π_M|/{ref}), final proof "
+                     f"{num(sf.get('final_pi_bytes'), 0)} bytes), M = {m}{trunc}{other if sf is not s else ''}")
         if is_num(s.get("S_every")):
-            lines.append(f"S_every = {x('S_every')} s = P_total × size factor {x('size_factor_every')} "
-                         f"(every: 2^(max |π_i|/{ref}), largest proof {num(s.get('max_pi_bytes'), 0)} bytes)")
-        tot = s.get("pass_totals_s")
-        if isinstance(tot, list) and tot and all(is_num(t) for t in tot[:8]):
-            mp = s.get("median_pass")
-            which = f"pass {mp}'s total" if is_num(mp) else "the median pass's total"
-            lines.append(f"P_total: {which}, the median of the timed passes' totals "
-                         + ", ".join(f"{num(t)} s" for t in tot[:8]))
+            p_e = f" {num(se.get('P_total_s'))} s" if se is not s else ""
+            lines.append(f"S_every = {num(s.get('S_every'))} s = P_total{p_e} × size factor {num(se.get('size_factor_every'))} "
+                         f"(every: 2^(max |π_i|/{ref}), largest proof {num(se.get('max_pi_bytes'), 0)} bytes)"
+                         + (other if se is not s else ""))
+        for what, sx in (("", s),) + tuple((f" ({t})", v) for t, v in sorted(by.items()) if isinstance(v, dict)):
+            tot = sx.get("pass_totals_s")
+            if isinstance(tot, list) and tot and all(is_num(t) for t in tot[:8]):
+                mp = sx.get("median_pass")
+                which = f"pass {mp}'s total" if is_num(mp) else "the median pass's total"
+                lines.append(f"P_total{what}: {which}, the median of the timed passes' totals "
+                             + ", ".join(f"{num(t)} s" for t in tot[:8]))
         named = [t for t, _f, _v in score_fields(s)]
         left = [t for t in TRACKS if t not in named]
         if e.get("verdict") == "ACCEPT":
@@ -166,7 +175,7 @@ def notes_md(st, read, repo, cap=4 << 20):
 
 def records_json(st, pin):
     """`records.json` for `main` (version 2): per track, the standing record (the newest record of
-    the track at this pin, or null) and every other record of that track (earlier pins', retired
+    the track at this pin not retired in it, or null) and every other record of that track (earlier pins', retired
     ones), newest first. An entry that took both tracks' records appears under both."""
     cur = rfqueue.standing(st, pin)
     hist = {t: [r for r in rfqueue.records(st, t) if cur[t] is None or r["id"] != cur[t]["id"]] for t in cur}

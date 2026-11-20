@@ -230,6 +230,60 @@ class Queue(unittest.TestCase):
         s["submissions"] += [E(6, 6, "bob", tree="Y", status="running")]
         self.assertIn("being evaluated", rfqueue.duplicate_of(s, "new", 6, "bob", "Y"))    # an empty push meanwhile
 
+    def test_a_copied_prover_tree_is_a_copy(self):
+        """The copy rule also keys on the `prover/` tree: another author's root with the same prover/
+        (new NOTES, Lean or root name) came first and is a copy, whatever became of the first; the
+        author's own prover under a new root is allowed; an invalid entry never counts."""
+        s = self.st(E(1, 1, "alice", tree="T", prover_tree="P", status="superseded"),
+                    E(2, 2, "eve", tree="U", prover_tree="Q", status="invalid"))
+        self.assertIn("the same prover/ as pr1-", rfqueue.duplicate_of(s, "new", 9, "bob", "T2", "P"))
+        self.assertIn("the same root as pr1-", rfqueue.duplicate_of(s, "new", 9, "bob", "T", "P2"))
+        self.assertIsNone(rfqueue.duplicate_of(s, "new", 9, "alice", "T2", "P"))      # her own prover, a new root
+        self.assertIsNone(rfqueue.duplicate_of(s, "new", 9, "bob", "T2", "Q"))        # an invalid entry: never
+        self.assertIsNone(rfqueue.duplicate_of(s, "new", 9, "bob", "T2", None))
+        # compaction keeps the prover tree for the rule
+        self.assertIn("prover_tree", rfqueue.COMPACT_KEYS)
+
+    def test_the_earliest_queued_owner_of_a_prover_wins(self):
+        """The heavy review's snipe.py: bob copies alice's queued prover (one comment changed: a new
+        prover/ tree, the same binary), runs first in the fair order and takes the record. Alice's run
+        of that binary is not barred by bob's record (she showed it first): the record is set aside
+        and she is compared as if it had not been taken. A record of the same binary by the same
+        author, or queued first, bars it, as before."""
+        alice = E(2, 2, "alice", queued="2026-01-03T00:00:00Z", status="running", prover_tree="PA")
+        bob = E(3, 3, "bob", "record", queued="2026-01-03T01:00:00Z", finished="2026-01-04T00:00:00Z",
+                harness_commit=PIN, prover_tree="PB", prover_sha256="c" * 64)
+        old = E(4, 4, "carol", "record", queued="2025-12-01T00:00:00Z", finished="2025-12-02T00:00:00Z",
+                harness_commit=PIN, prover_sha256="d" * 64, record_in=["final", "every"],
+                score={"S": 10.0, "S_every": 10.0, "tracks": {"final": "S", "every": "S_every"}})
+        s = self.st(old, alice, bob)
+        self.assertEqual(rfqueue.standing(s, PIN)["final"], bob)
+        keys = {("prover_sha256", "c" * 64), ("prover_tree", "PA")}
+        self.assertEqual(rfqueue.prover_owner(s, alice, keys), ({}, [bob["id"]]))
+        self.assertEqual(rfqueue.standing(s, PIN, [bob["id"]])["final"], old)       # compared with carol's record
+        d = decide(R(S=9.0, prover_sha256="c" * 64), OK, PIN, rfqueue.standing(s, PIN, [bob["id"]]), 1, {})
+        self.assertEqual((d["status"], d["record_of"]["final"]), ("record", old["id"]))
+        # the sources hash matches too
+        bob["prover_sha256"], bob["prover_sources_sha256"] = "e" * 64, "f" * 64
+        self.assertEqual(rfqueue.prover_owner(s, alice, {("prover_sources_sha256", "f" * 64)}), ({}, [bob["id"]]))
+        # queued after bob's record, or bob's own: barred
+        late = E(5, 5, "alice", queued="2026-01-05T00:00:00Z", status="running")
+        self.assertEqual(rfqueue.prover_owner(self.st(old, bob, late), late, {("prover_sha256", "e" * 64)}),
+                         ({"e" * 64: bob["id"]}, []))
+        again = E(6, 6, "bob", queued="2025-01-01T00:00:00Z", status="running")
+        self.assertEqual(rfqueue.prover_owner(self.st(old, bob, again), again, {("prover_sha256", "e" * 64)})[0],
+                         {"e" * 64: bob["id"]})
+        # alice's earlier entry with the same prover/ tree (a later push of hers) keeps her first time
+        late["prover_tree"] = "PA"
+        s = self.st(old, dict(alice, status="superseded"), bob, late)
+        self.assertEqual(rfqueue.prover_owner(s, late, {("prover_sha256", "e" * 64), ("prover_tree", "PA")}),
+                         ({}, [bob["id"]]))
+        # decide bars by the sources hash as well as the binary's
+        d = decide(R(S=1.0, prover_sha256="1" * 64, entry={"prover_sources_sha256": "f" * 64}), OK, PIN, {}, 1,
+                   {"f" * 64: bob["id"]})
+        self.assertEqual(d["status"], "accepted")
+        self.assertTrue(any("never a new record" in r for r in d["reasons"]))
+
     def test_records_per_pin_and_retirement(self):
         s = self.st(E(1, 1, "a", status="record", finished="2026-01-01", harness_commit=PIN),
                     E(2, 2, "b", status="record", finished="2026-01-02", harness_commit="c" * 40))
@@ -243,6 +297,16 @@ class Queue(unittest.TestCase):
         self.assertIsNone(rfqueue.current_record(s, PIN, "final"))   # a retired record never stands again
         self.assertEqual(s["submissions"][0]["status"], "retired")
         self.assertEqual([e["pr"] for e in rfqueue.records(s)], [2, 1])
+        # two records at one pin: retiring the newest, the one it beat stands again; never a retired one
+        a = E(3, 3, "a", status="record", finished="2026-01-03", harness_commit=PIN)
+        b = E(4, 4, "b", status="record", finished="2026-01-04", harness_commit=PIN)
+        s = self.st(a, b)
+        self.assertIs(rfqueue.current_record(s, PIN, "final"), b)
+        rfqueue.retire(b, "final", "t", "x")
+        self.assertIs(rfqueue.current_record(s, PIN, "final"), a)
+        rfqueue.retire(a, "final", "t", "x")
+        self.assertIsNone(rfqueue.current_record(s, PIN, "final"))
+        self.assertEqual(rfqueue.due_ports(s, "c" * 40), {})
 
     def test_dump_names_the_standing_record(self):
         st = rfqueue.empty("o/r", PIN)
@@ -303,14 +367,15 @@ class Queue(unittest.TestCase):
         self.assertEqual(rfqueue.port(s, 2, "c" * 40, "now", o=b)["port_tracks"], ["every"])
         self.assertIsNone(rfqueue.due_port(s, "c" * 40))
         # retirement of one track: the entry keeps the other's crown; the retired track falls back to
-        # no record (the newest record of the track is retired, an older one never stands again)
+        # the newest record of the track that is not retired (the one the retired record beat)
         s = self.st(a, b)
         self.assertTrue(rfqueue.retire(b, "every", "t", "x"))
-        self.assertEqual((b["status"], rfqueue.standing(s, PIN)), ("retired", {"final": a, "every": None}))
-        self.assertEqual(rfqueue.due_ports(s, "c" * 40), {"final": a})           # a retired record is not ported
+        self.assertEqual((b["status"], rfqueue.standing(s, PIN)), ("retired", {"final": a, "every": a}))
+        self.assertEqual(rfqueue.due_ports(s, "c" * 40), {"final": a, "every": a})   # a retired record is not ported
         self.assertTrue(rfqueue.retire(a, "every", "t", "x"))
         self.assertEqual((a["status"], a["retired_in"].keys() == {"every"}), ("record", True))
-        self.assertEqual(rfqueue.standing(s, PIN), {"final": a, "every": None})
+        self.assertEqual(rfqueue.standing(s, PIN), {"final": a, "every": None})     # every record of it retired
+        self.assertEqual(rfqueue.due_ports(s, "c" * 40), {"final": a})
         self.assertEqual([e["id"] for e in rfqueue.records(s, "every")], [b["id"], a["id"]])
         self.assertEqual([e["id"] for e in rfqueue.records(s, "final")], [a["id"]])
         self.assertTrue(rfqueue.retire(a, "final", "t", "x"))
@@ -511,14 +576,26 @@ class Decide(unittest.TestCase):
         c = confirmed(first, decide(V6(S=9.0, every=False), OK, PIN, self.recs, 1))      # confirmed in final only
         self.assertEqual((c["status"], c["took"]), ("record", ["final"]))
         self.assertIn("not confirmed in every", c["reasons"][0])
-        for d2, why in ((decide(R(S=9.9), OK, PIN, self.recs, 1), "does not beat"),
-                        (decide(R("REJECT"), OK, PIN, self.recs, 1), "verdict is REJECT"),
-                        (decide(R(comparable=False), dict(OK, record_ok=False), PIN, self.recs, 1), "unranked")):
+        # not confirmed: accepted if the confirmation is an ACCEPT that does not beat the record; else
+        # the entry's status is the confirmation's (a REJECT is rejected, an unranked ACCEPT unranked)
+        for d2, why, status in ((decide(R(S=9.9), OK, PIN, self.recs, 1), "does not beat", "accepted"),
+                                (decide(R("REJECT"), OK, PIN, self.recs, 1), "verdict is REJECT", "rejected"),
+                                (decide(R("PROVISIONAL"), OK, PIN, self.recs, 1), "PROVISIONAL", "provisional"),
+                                (decide(R(comparable=False), dict(OK, record_ok=False), PIN, self.recs, 1), "unranked",
+                                 "unranked")):
             c = confirmed(first, d2)
-            self.assertEqual((c["status"], c["took"], c["record_of"]), ("accepted", [], {"final": None, "every": None}))
+            self.assertEqual((c["status"], c["took"], c["record_of"]), (status, [], {"final": None, "every": None}))
             self.assertIn(why, c["reasons"][0])
-        self.assertEqual(common.track_scores(confirmed(first, decide(R(S=9.9), OK, PIN, self.recs, 1))["score"])["final"], 9.9)
-        self.assertEqual(common.track_scores(confirmed(first, decide(R("REJECT"), OK, PIN, self.recs, 1))["score"])["final"], 9.0)
+        c = confirmed(first, decide(R(S=9.9), OK, PIN, self.recs, 1))
+        self.assertEqual((common.track_scores(c["score"])["final"], c["score_run"], c["against"]["final"]["S"]),
+                         (9.9, "confirmation", 9.9))                     # the worse run's score and comparison
+        rej = decide(R("REJECT", score=None), OK, PIN, self.recs, 1)
+        c = confirmed(first, rej)
+        self.assertEqual((c["score"], c["score_run"]), (None, "confirmation"))     # the REJECT's (no score)
+        c = confirmed(first, decide(R(S=9.95), OK, PIN, self.recs, 1))
+        self.assertEqual(c["score_run"], "confirmation")
+        c = confirmed(candidate(decide(R(S=9.97), OK, PIN, {}, 1), PIN, "u"), decide(R(S=9.9), OK, PIN, self.recs, 1))
+        self.assertEqual(c["status"], "accepted")
         self.assertIsNone(confirmed(first, decide(R("ERROR"), OK, PIN, self.recs, 1)))             # retried, still pending
         self.assertIsNone(confirmed(first, decide(R(), {"attested": False}, PIN, self.recs, 1)))
         # S and S_every order the two runs differently: each track keeps its own worse run
@@ -528,6 +605,15 @@ class Decide(unittest.TestCase):
                          ("record", ["final", "every"], {"final": 9.1, "every": 9.4}))
         self.assertEqual((c["against"]["final"]["S"], c["against"]["every"]["S"]), (9.1, 9.4))
         self.assertEqual(c["score"]["tracks"], {"final": "S", "every": "S_every"})
+        # every part shown with a track's score is of the run that gave it: the score object is the
+        # lead track's (final) worse run, whole; every's fields are the first run's, in by_track
+        self.assertEqual((c["score_run"], c["score"]["P_total_s"], c["score"]["S"]), ("confirmation", 9.1 / 1.25, 9.1))
+        self.assertEqual(set(c["score"]["by_track"]), {"every"})
+        bt = c["score"]["by_track"]["every"]
+        self.assertEqual((bt["S_every"], bt["P_total_s"], c["score"]["S_every"]), (9.4, 9.0 / 1.25, 9.4))
+        self.assertNotIn("tracks", bt)
+        c2 = confirmed(first, decide(V6(S=9.2, S_every=9.5), OK, PIN, self.recs, 1))     # one run worse in both
+        self.assertEqual((c2["score_run"], "by_track" in c2["score"], c2["score"]["S_every"]), ("confirmation", False, 9.5))
         self.assertIn("final: 9.0000 s, then 9.1000 s; every: 9.4000 s, then 9.3000 s", c["reasons"][0])
         none = candidate(decide(R(S=50.0), OK, PIN, {}, 1), PIN, "u")                     # no record stood: any ACCEPT confirms
         self.assertEqual(confirmed(none, decide(R(S=60.0), OK, PIN, {}, 1))["status"], "record")

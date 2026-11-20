@@ -11,15 +11,23 @@ the result scores (`common.score_fields`; AGENTS.md §10):
   `S_t,record` that record's own score in `t` at the pin (both measured on the same machine, as
   comparability requires).
 
-An entry may take the records of several tracks at once. A prover binary that an earlier record of
-any track already had never takes a record again (a resubmitted copy).
+An entry may take the records of several tracks at once. A prover binary (or the same prover
+sources) that an earlier record of any track already had never takes a record again (a resubmitted
+copy), unless the record is another author's that was queued after this entry's author first showed
+that prover: the earliest-queued owner of a prover wins, and such a record is set aside when this
+entry is compared (rfqueue.prover_owner).
 
 **Confirmation** (AGENTS.md §10). A result that would take a record (`decide` says `record`) is not
 crowned at once, a port of a record to a new pin excepted: the same commit is evaluated once more at
 the same pin (`candidate`, then `confirmed`). It takes the record of a track only if the
 confirmation run too is a comparable, attested ACCEPT that takes that track by the rule above, and
-the score it keeps is the worse (larger) of the two runs'. So one lucky run (a re-rolled NOTES, a
-one-byte `.s` change) is not enough: the margin must hold twice."""
+the score it keeps is the worse (larger) of the two runs'. Challengers are then compared with that
+worse score. This halves the gain a lucky first run alone can give, but it does not make the margin
+hold twice in effect: a near-copy of the record (the same speed) is a new record in about 15.9 % of
+attempts at a run-to-run spread σ of 1.75 %, 4.1 % at σ = 1 %, 0.03 % at σ = 0.5 % (the heavy
+review's Monte Carlo; comparing with the mean of the record's two runs instead would give 5.5 % at
+σ = 1.75 %: the owner's choice, .github/bot/README.md). The defences against noise mining are the
+copy rules (rfqueue.duplicate_of, rfqueue.prover_owner) and the owner's `retire`."""
 from common import (LEGACY_TRACKS, MARGIN, MAX_ATTEMPTS, ORGANISER_ERRORS, PAUSING_ERRORS, SHA_RE, TRACK_RE, TRACKS, VERDICTS,
                     clean, clean_reasons, is_num, score_fields, track_scores)
 
@@ -71,6 +79,20 @@ def against(S, record, track, margin=MARGIN):
                    f"needs more than {margin:.0%})"), d
 
 
+def result_prover_keys(result):
+    """{(key, hash)} of a result's prover: its binary's `prover_sha256` and its sources' hash
+    (`entry.prover_sources_sha256`), each 64 ASCII letters or digits, as the entry stores them
+    (rfqueue.prover_keys)."""
+    ent = result.get("entry") if isinstance(result, dict) and isinstance(result.get("entry"), dict) else {}
+    pairs = (("prover_sha256", (result or {}).get("prover_sha256")), ("prover_sources_sha256", ent.get("prover_sources_sha256")))
+    return {(k, v) for k, v in pairs if isinstance(v, str) and len(v) == 64 and v.isascii() and v.isalnum()}
+
+
+def barred_by(result, record_provers):
+    """The id of the record whose prover binary (or sources) this result has, or None."""
+    return next((record_provers[v] for _k, v in sorted(result_prover_keys(result)) if v in record_provers), None)
+
+
 def decide(result, verification, pin, records, attempts, record_provers=(), margin=MARGIN, tracks=None):
     """The fields an evaluation sets on its entry, with `requeue` (evaluate it once more) and
     `organiser_side` (the run ended on the organiser's side, not in a clean verdict) and
@@ -80,8 +102,9 @@ def decide(result, verification, pin, records, attempts, record_provers=(), marg
     result: the parsed result.json or None; verification: {"attested": bool, "record_ok": bool,
     "reason": str}; records: {track: the standing record's entry at this pin} (a track with none
     standing is absent or None); attempts: this entry's evaluations so far in this round, this one
-    included; record_provers: {prover_sha256: id} of every record of every track (but this commit's
-    own); tracks: the tracks this entry is a candidate in (a port: those whose record it carries to
+    included; record_provers: {hash: id}, the prover binary and sources hashes of the records that
+    bar this entry (rfqueue.prover_owner: of another commit, and its own author's or queued first);
+    tracks: the tracks this entry is a candidate in (a port: those whose record it carries to
     the pin), None for every track.
 
     `took` lists the tracks whose record it takes (status `record` iff it is not empty);
@@ -155,9 +178,9 @@ def decide(result, verification, pin, records, attempts, record_provers=(), marg
     elif not scores:
         status = "unranked"
         extra.append("ACCEPT without a positive score in any track: not ranked")
-    elif isinstance(result.get("prover_sha256"), str) and result["prover_sha256"] in record_provers:
+    elif barred_by(result, record_provers):
         status = "accepted"
-        extra.append(f"the same prover binary as the record {record_provers[result['prover_sha256']]}: never a new record")
+        extra.append(f"the same prover binary as the record {barred_by(result, record_provers)}: never a new record")
     else:
         for t, S in scores.items():
             rec = (records or {}).get(t)
@@ -284,30 +307,39 @@ def confirmed(first, d2):
     """Combines the confirmation run's decision `d2` (`decide` at the same pin, against the same
     standing records) with the pending `first` run (`candidate`). Returns None if `d2` ends on the
     organiser's side or is queued again (the confirmation stays pending, retried as any run), else the
-    fields to set: `status` (`record` iff some track is taken by both runs, else `accepted`), `took`,
-    `score`, `against`, `record_of` and the `reasons` line that says what the confirmation did.
+    fields to set: `status`, `took`, `score`, `against`, `record_of`, the `reasons` line that says
+    what the confirmation did, and `score_run` (`first` or `confirmation`: the run whose result the
+    entry's score object is, so the entry's run link and result JSON name it).
+
+    `status` is `record` iff some track is taken by both runs; else the confirmation's own status if
+    it is not an ACCEPT that ranks (`rejected`, `provisional`, `unranked`: the entry's status follows
+    the confirmation's verdict), else `accepted`.
 
     The record keeps the worse run **per track**: in each track taken, the score field `tracks` names
     holds the larger of the two runs' scores, and `against`/`record_of` are that run's comparison in
-    that track (`S` and `S_every` can order the two runs differently). The other fields of `score`
-    are the run that is worse in the first track taken."""
+    that track (`S` and `S_every` can order the two runs differently). The score object is the run
+    that is worse in the first track taken, whole; a track taken whose worse run is the other one
+    has all its fields from that run in `score.by_track[track]` (P_total, the passes, its size
+    factor and proof size), so every part shown with a track's score is of the run that gave it."""
     if d2["requeue"] or d2["status"] in ("queued", "error"):
         return None
     took = [t for t in first["took"] if t in d2["took"]]
     s1, s2 = track_scores(first["score"]), track_scores(d2["score"])
     lead = first["took"][0]
     ok2 = d2["status"] in ("record", "accepted") and lead in s2
-    run2 = {"score": d2["score"], "against": d2["against"], "record_of": d2["record_of"]}
+    run1 = {"score": first["score"], "against": first["against"], "record_of": first["record_of"], "run": "first"}
+    run2 = {"score": d2["score"], "against": d2["against"], "record_of": d2["record_of"], "run": "confirmation"}
 
     def worse(t):
-        return run2 if t in s2 and s2[t] >= s1.get(t, 0) else first
-    w = worse(lead) if ok2 else first
+        return run2 if t in s2 and s2[t] >= s1.get(t, 0) else run1
+    w = worse(lead) if ok2 else run1
     both = (f"{lead}: S = {s1.get(lead, 0):.4f} s, then {s2[lead]:.4f} s in the confirmation" if lead in s2
             else f"{lead}: S = {s1.get(lead, 0):.4f} s; the confirmation has no score in it")
     if took:
-        score = dict(w["score"] or {})
+        score = {k: v for k, v in (w["score"] or {}).items() if k != "by_track"}
         names = dict(score.get("tracks") or {}) if isinstance(score.get("tracks"), dict) else None
         against, record_of = dict(w["against"] or {}), {t: None for t in (w["record_of"] or {})}
+        by = {}
         for t in took:
             wt = worse(t)
             f = next((f for tt, f, _v in score_fields(wt["score"]) if tt == t), None)
@@ -315,21 +347,30 @@ def confirmed(first, d2):
                 score[f] = track_scores(wt["score"])[t]
                 if names is not None:
                     names[t] = f
+            if wt is not w:
+                by[t] = {k: v for k, v in (wt["score"] or {}).items() if k not in ("tracks", "by_track", "tracks_reason")}
             against[t] = (wt["against"] or {}).get(t)
             record_of[t] = (wt["record_of"] or {}).get(t)
         if names is not None:
             score["tracks"] = names
+        if by:
+            score["by_track"] = by
         per = "; ".join(f"{t}: {s1.get(t, 0):.4f} s, then {s2.get(t, 0):.4f} s" for t in took)
         why = (f"confirmed: the confirmation run also takes the record of {', '.join(took)} ({per}); "
-               f"the record keeps the worse score in each track")
+               f"the record keeps the worse run in each track")
         lost = [t for t in first["took"] if t not in took]
         if lost:
             why += f"; not confirmed in {', '.join(lost)}"
         return {"status": "record", "took": took, "score": score, "against": against,
-                "record_of": record_of, "reasons": [why]}
-    what = (f"its verdict is {d2['verdict']} ({d2['status']})" if d2["status"] not in ("record", "accepted")
-            else "it does not beat the standing record by the margin")
-    return {"status": "accepted", "took": [], "score": w["score"] if ok2 else first["score"],
-            "against": d2["against"] if ok2 else first["against"],
-            "record_of": {t: None for t in (first["record_of"] or {})},
-            "reasons": [f"not a record: the confirmation run of this record candidate did not confirm it: {what} ({both})"]}
+                "record_of": record_of, "reasons": [why], "score_run": w["run"]}
+    none = {t: None for t in (first["record_of"] or {})}
+    if d2["status"] not in ("record", "accepted"):
+        # the confirmation is not an ACCEPT that ranks: the entry takes its verdict's status
+        return {"status": d2["status"], "took": [], "score": d2["score"], "against": d2["against"], "record_of": none,
+                "score_run": "confirmation",
+                "reasons": [f"not a record: the confirmation run of this record candidate did not confirm it: its verdict "
+                            f"is {d2['verdict']} ({d2['status']}), so this entry is {d2['status']} ({both})"]}
+    return {"status": "accepted", "took": [], "score": w["score"], "against": w["against"], "record_of": none,
+            "score_run": w["run"],
+            "reasons": [f"not a record: the confirmation run of this record candidate did not confirm it: it does not "
+                        f"beat the standing record by the margin ({both})"]}

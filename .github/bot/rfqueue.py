@@ -146,19 +146,29 @@ def add_invalid(st, entry, reasons, now):
     return tgt, True
 
 
-def duplicate_of(st, eid, pr, author, tree):
-    """Why a root with this tree is not queued, or None. Another author's entry with the same tree
-    came first (a copied root: the earliest wins, whatever became of it), or one of the author's
-    own entries with the same tree was evaluated, is being evaluated, or is queued in another pull
-    request (an identical re-run, e.g. an empty commit, would only re-draw the measurement noise).
-    Invalid entries never count, nor do the author's own organiser-side errors (a retry)."""
+def duplicate_of(st, eid, pr, author, tree, prover_tree=None):
+    """Why a root with this tree is not queued, or None. Another author's entry with the same root
+    tree, or the same `prover/` tree (a copied prover under new NOTES, Lean or claim), came first (a
+    copy: the earliest wins, whatever became of it), or one of the author's own entries with the
+    same root tree was evaluated, is being evaluated, or is queued in another pull request (an
+    identical re-run, e.g. an empty commit, would only re-draw the measurement noise). Invalid
+    entries never count, nor do the author's own organiser-side errors (a retry). "First" is the
+    order in which the bot recorded the heads (their queue times): a draft or held pull request is
+    not recorded, so it protects nothing."""
     if not tree:
         return None
     for e in st["submissions"]:
-        if e.get("tree") != tree or e["id"] == eid or e["status"] == "invalid":
+        if e["id"] == eid or e["status"] == "invalid":
+            continue
+        same_root = e.get("tree") == tree
+        same_prover = bool(prover_tree) and e.get("prover_tree") == prover_tree
+        if not (same_root or same_prover):
             continue
         if e["author"] != author:
-            return f"the same root as {e['id']} (#{e['pr']}, by another author), submitted earlier"
+            what = "root" if same_root else "prover/"
+            return f"the same {what} as {e['id']} (#{e['pr']}, by another author), submitted earlier"
+        if not same_root:
+            continue                    # the author's own prover under a new root: allowed
         if e["status"] in EVALUATED and e["status"] != "error":
             return f"the same root as {e['id']} (#{e['pr']}), already evaluated ({e['status']})"
         if e["status"] == RUNNING:
@@ -318,13 +328,15 @@ def records(st, track=None):
     return sorted(rs, key=lambda e: (e.get("finished") or "", e["id"]), reverse=True)
 
 
-def current_record(st, pin, track):
+def current_record(st, pin, track, exclude=()):
     """The standing record of `track`: the newest record of the track taken at this pin
-    (`harness_commit == pin`), unless it was retired in that track (a retired record never stands
-    again). A record of an earlier pin stays in the history; with none standing, the first
-    comparable attested ACCEPT at the pin is the track's record."""
-    newest = next((e for e in records(st, track) if e.get("harness_commit") == pin), None)
-    return newest if newest is not None and not retired_in(newest, track) else None
+    (`harness_commit == pin`) that was not retired in that track (a retired record never stands
+    again; retiring the newest lets the one it beat stand again, if that one was not retired
+    either). `exclude`: ids set aside (`prover_owner`). A record of an earlier pin stays in the
+    history; with none standing, the first comparable attested ACCEPT at the pin that is confirmed
+    (decide.py: a second run of the same commit) is the track's record."""
+    return next((e for e in records(st, track) if e.get("harness_commit") == pin and not retired_in(e, track)
+                 and e["id"] not in exclude), None)
 
 
 def retired_in(e, track):
@@ -332,9 +344,55 @@ def retired_in(e, track):
     return e["status"] == "retired" or track in (e.get("retired_in") or {})
 
 
-def standing(st, pin):
+def standing(st, pin, exclude=()):
     """{track: its standing record at the pin, or None} for every track of the state."""
-    return {t: current_record(st, pin, t) for t in tracks(st)}
+    return {t: current_record(st, pin, t, exclude) for t in tracks(st)}
+
+
+HEX64 = frozenset("0123456789abcdef")
+
+
+def prover_keys(e):
+    """The keys that name an entry's prover: its binary's sha256 (`prover_sha256`), its sources'
+    (`prover_sources_sha256`, the core's `entry.prover_sources_sha256`) and its `prover/` tree."""
+    out = set()
+    for k in ("prover_sha256", "prover_sources_sha256", "prover_tree"):
+        v = e.get(k)
+        if isinstance(v, str) and v:
+            out.add((k, v))
+    return out
+
+
+def owned_since(st, author, keys):
+    """When `author` first showed a prover with one of `keys` (`prover_keys`): the earliest queue
+    time of the author's entries that share one (invalid entries never count), or None."""
+    ts = [e["queued"] for e in st["submissions"] if e.get("author") == author and e["status"] != "invalid"
+          and isinstance(e.get("queued"), str) and prover_keys(e) & keys]
+    return min(ts, default=None)
+
+
+def prover_owner(st, e, keys):
+    """(barred_by, set_aside) for the evaluated entry `e` whose prover has `keys` (its attested
+    binary and sources hashes, and its `prover/` tree), against every record of another commit with
+    the same binary or sources hash. The earliest-queued owner of a prover wins: such a record by the
+    same author, or queued first, bars `e` (`barred_by`: {key: its id}, decide's `record_provers`:
+    a resubmitted copy never takes a record); one by another author whose prover `e`'s author showed
+    first (`owned_since`) is a copy of `e`'s and is set aside (`set_aside`: its ids; `e` is compared
+    with the records as if it had not been taken)."""
+    mine = owned_since(st, e.get("author"), keys) or e.get("queued") or ""
+    barred, aside = {}, []
+    for r in records(st):
+        if r.get("sha") == e.get("sha"):
+            continue                   # a port of this commit, or this commit: its own crowns
+        hit = {k for k in prover_keys(r) & keys if k[0] != "prover_tree"}
+        if not hit:
+            continue
+        theirs = owned_since(st, r.get("author"), prover_keys(r)) or r.get("queued") or ""
+        if r.get("author") != e.get("author") and mine < theirs:
+            aside.append(r["id"])
+        else:
+            barred.update({v: r["id"] for _k, v in hit})
+    return barred, aside
 
 
 def retire(e, track, now, why):
@@ -350,13 +408,13 @@ def retire(e, track, now, why):
     return True
 
 
-COMPACT_KEYS = ("id", "pr", "sha", "root", "author", "status", "queued", "finished", "tree", "attempts", "verdict",
-                "started", "counted_at")
+COMPACT_KEYS = ("id", "pr", "sha", "root", "author", "status", "queued", "finished", "tree", "prover_tree", "attempts",
+                "verdict", "started", "counted_at")
 
 
 def compact(st):
     """Bounds the state against a flood of pushes: an entry that never was evaluated (superseded, withdrawn,
-    invalid) and is not its pull request's newest entry keeps only `COMPACT_KEYS` (the tree for the
+    invalid) and is not its pull request's newest entry keeps only `COMPACT_KEYS` (the trees for the
     duplicate rule, `started` for fairness); a pull request keeps at most `MAX_HEADS_PER_PR` such
     entries (the oldest are dropped). Evaluated entries are kept whole. Returns the paths of copied
     NOTES/README files that are no longer referenced."""
@@ -387,7 +445,7 @@ def port_id(o, pin):
 
 def due_ports(st, pin):
     """{track: the record to port to this pin}, for each track of TRACKS with no record standing at
-    the pin whose newest record is of an earlier pin, was not retired in that track, and has not been
+    the pin whose newest record not retired in that track is of an earlier pin and has not been
     ported here yet (a port evaluated once, whatever its verdict, is not repeated). A track not in
     TRACKS (an earlier season's) is never ported: its records stay in the history, and the new
     season starts with no record in it."""
@@ -395,9 +453,8 @@ def due_ports(st, pin):
     for t, cur in standing(st, pin).items():
         if t not in TRACKS:
             continue
-        rs = records(st, t)
-        o = rs[0] if rs else None
-        if cur is not None or o is None or retired_in(o, t) or o.get("harness_commit") == pin \
+        o = next((r for r in records(st, t) if not retired_in(r, t)), None)
+        if cur is not None or o is None or o.get("harness_commit") == pin \
                 or not o.get("tag") or find(st, port_id(o, pin)) is not None:
             continue
         out[t] = o
@@ -428,7 +485,8 @@ def port(st, pr, pin, now, o=None):
     if find(st, nid) is not None:
         return None
     carried = [t for t, x in due_ports(st, pin).items() if x["id"] == o["id"]]
-    keep = ("pr", "sha", "root", "author", "title", "agent", "builds_on", "opened", "tag", "notes", "readme", "tree")
+    keep = ("pr", "sha", "root", "author", "title", "agent", "builds_on", "opened", "tag", "notes", "readme", "tree",
+            "prover_tree")
     e = {k: o.get(k) for k in keep}
     e.update(id=nid, port_of=o["id"], port_tracks=carried or None, status=QUEUED, queued=now, started=None,
              finished=None, attempts=0, verdict=None, score=None, comparable=False, truncated=False, reasons=[],
