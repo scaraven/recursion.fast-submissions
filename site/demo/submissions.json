@@ -22,12 +22,12 @@
    "status": "record",
    "verdict": "ACCEPT",
    "score": {
-    "S": 11.3429,
+    "S": 2288730.0,
     "P_total_s": 7.6291,
-    "size_factor": 1.4868,
+    "size_factor": 300000,
     "final_pi_bytes": 300000,
-    "S_every": 12.6083,
-    "size_factor_every": 1.6527,
+    "S_every": 2899058.0,
+    "size_factor_every": 380000,
     "max_pi_bytes": 380000,
     "pass_totals_s": [
      7.6451,
@@ -35,7 +35,6 @@
      7.6192
     ],
     "median_pass": 2,
-    "size_ref": 524288,
     "M": 16,
     "sum_n": 4194304,
     "c_P": 1.031,
@@ -49,7 +48,7 @@
    "reasons": [
     "final: no record stood in this track at the pin",
     "every: no record stood in this track at the pin",
-    "confirmed: the confirmation run also takes the record of final, every (final: 11.3429 s, then 11.3066 s; every: 12.6083 s, then 12.5680 s); the record keeps the worse run in each track"
+    "confirmed: the confirmation run also takes the record of final, every (final: 2288730.0000 s*B, then 2281410.0000 s*B; every: 2899058.0000 s*B, then 2889786.0000 s*B); the record keeps the worse run in each track"
    ],
    "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/101",
    "tag": "rf-source/pr3-5d84396bc69e",
@@ -81,12 +80,12 @@
     "run": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/121",
     "result": "results/pr3-5d84396bc69e-confirm.json",
     "first_score": {
-     "S": 11.3429,
+     "S": 2288730.0,
      "P_total_s": 7.6291,
-     "size_factor": 1.4868,
+     "size_factor": 300000,
      "final_pi_bytes": 300000,
-     "S_every": 12.6083,
-     "size_factor_every": 1.6527,
+     "S_every": 2899058.0,
+     "size_factor_every": 380000,
      "max_pi_bytes": 380000,
      "pass_totals_s": [
       7.6451,
@@ -94,7 +93,6 @@
       7.6192
      ],
      "median_pass": 2,
-     "size_ref": 524288,
      "M": 16,
      "sum_n": 4194304,
      "c_P": 1.031,
@@ -104,12 +102,12 @@
      }
     },
     "score": {
-     "S": 11.3066,
+     "S": 2281410.0,
      "P_total_s": 7.6047,
-     "size_factor": 1.4868,
+     "size_factor": 300000,
      "final_pi_bytes": 300000,
-     "S_every": 12.568,
-     "size_factor_every": 1.6527,
+     "S_every": 2889786.0,
+     "size_factor_every": 380000,
      "max_pi_bytes": 380000,
      "pass_totals_s": [
       7.6207,
@@ -117,7 +115,6 @@
       7.5948
      ],
      "median_pass": 2,
-     "size_ref": 524288,
      "M": 16,
      "sum_n": 4194304,
      "c_P": 1.031,
@@ -192,12 +189,12 @@
    "status": "record",
    "verdict": "ACCEPT",
    "score": {
-    "S": 5.1021,
+    "S": 940680.0,
     "P_total_s": 3.618,
-    "size_factor": 1.4102,
+    "size_factor": 260000,
     "final_pi_bytes": 260000,
-    "S_every": 5.6713,
-    "size_factor_every": 1.5675,
+    "S_every": 1230120.0,
+    "size_factor_every": 340000,
     "max_pi_bytes": 340000,
     "pass_totals_s": [
      3.6256,
@@ -205,7 +202,6 @@
      3.6133
     ],
     "median_pass": 2,
-    "size_ref": 524288,
     "M": 16,
     "sum_n": 4194304,
     "c_P": 1.031,
@@ -217,9 +213,9 @@
    "comparable": true,
    "truncated": false,
    "reasons": [
-    "final: 5.1021 s beats the record pr3-5d84396bc69e-c0dec0de (11.4489 s) by 55.4%",
-    "every: 5.6713 s beats the record pr3-5d84396bc69e-c0dec0de (12.7262 s) by 55.4%",
-    "confirmed: the confirmation run also takes the record of final, every (final: 5.1021 s, then 5.0858 s; every: 5.6713 s, then 5.6532 s); the record keeps the worse run in each track"
+    "final: 940680.0000 s*B beats the record pr3-5d84396bc69e-c0dec0de (2310120.0000 s*B) by 59.3%",
+    "every: 1230120.0000 s*B beats the record pr3-5d84396bc69e-c0dec0de (2926152.0000 s*B) by 58.0%",
+    "confirmed: the confirmation run also takes the record of final, every (final: 940680.0000 s*B, then 937664.0000 s*B; every: 1230120.0000 s*B, then 1226176.0000 s*B); the record keeps the worse run in each track"
    ],
    "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/104",
    "tag": "rf-source/pr5-b08f59d2dfd5",
@@ -238,16 +234,16 @@
    "against": {
     "final": {
      "record": "pr3-5d84396bc69e-c0dec0de",
-     "S": 5.1021,
-     "S_record": 11.4489,
-     "gain": 0.5544,
+     "S": 940680.0,
+     "S_record": 2310120.0,
+     "gain": 0.5928003740065451,
      "beats": true
     },
     "every": {
      "record": "pr3-5d84396bc69e-c0dec0de",
-     "S": 5.6713,
-     "S_record": 12.7262,
-     "gain": 0.5544,
+     "S": 1230120.0,
+     "S_record": 2926152.0,
+     "gain": 0.5796117221525061,
      "beats": true
     }
    },
@@ -263,12 +259,12 @@
     "run": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/122",
     "result": "results/pr5-b08f59d2dfd5-confirm.json",
     "first_score": {
-     "S": 5.1021,
+     "S": 940680.0,
      "P_total_s": 3.618,
-     "size_factor": 1.4102,
+     "size_factor": 260000,
      "final_pi_bytes": 260000,
-     "S_every": 5.6713,
-     "size_factor_every": 1.5675,
+     "S_every": 1230120.0,
+     "size_factor_every": 340000,
      "max_pi_bytes": 340000,
      "pass_totals_s": [
       3.6256,
@@ -276,7 +272,6 @@
       3.6133
      ],
      "median_pass": 2,
-     "size_ref": 524288,
      "M": 16,
      "sum_n": 4194304,
      "c_P": 1.031,
@@ -286,12 +281,12 @@
      }
     },
     "score": {
-     "S": 5.0858,
+     "S": 937664.0,
      "P_total_s": 3.6064,
-     "size_factor": 1.4102,
+     "size_factor": 260000,
      "final_pi_bytes": 260000,
-     "S_every": 5.6532,
-     "size_factor_every": 1.5675,
+     "S_every": 1226176.0,
+     "size_factor_every": 340000,
      "max_pi_bytes": 340000,
      "pass_totals_s": [
       3.614,
@@ -299,7 +294,6 @@
       3.6017
      ],
      "median_pass": 2,
-     "size_ref": 524288,
      "M": 16,
      "sum_n": 4194304,
      "c_P": 1.031,
@@ -334,12 +328,12 @@
    "attempts": 1,
    "verdict": "ACCEPT",
    "score": {
-    "S": 11.4489,
+    "S": 2310120.0,
     "P_total_s": 7.7004,
-    "size_factor": 1.4868,
+    "size_factor": 300000,
     "final_pi_bytes": 300000,
-    "S_every": 12.7262,
-    "size_factor_every": 1.6527,
+    "S_every": 2926152.0,
+    "size_factor_every": 380000,
     "max_pi_bytes": 380000,
     "pass_totals_s": [
      7.7166,
@@ -347,7 +341,6 @@
      7.6904
     ],
     "median_pass": 2,
-    "size_ref": 524288,
     "M": 16,
     "sum_n": 4194304,
     "c_P": 1.031,
@@ -406,12 +399,12 @@
    "status": "provisional",
    "verdict": "PROVISIONAL",
    "score": {
-    "S": 4.2097,
+    "S": 849420.0,
     "P_total_s": 2.8314,
-    "size_factor": 1.4868,
+    "size_factor": 300000,
     "final_pi_bytes": 300000,
-    "S_every": 4.6793,
-    "size_factor_every": 1.6527,
+    "S_every": 1075932.0,
+    "size_factor_every": 380000,
     "max_pi_bytes": 380000,
     "pass_totals_s": [
      2.8373,
@@ -419,7 +412,6 @@
      2.8277
     ],
     "median_pass": 2,
-    "size_ref": 524288,
     "M": 16,
     "sum_n": 4194304,
     "c_P": 1.031,
@@ -474,17 +466,16 @@
    "status": "record",
    "verdict": "ACCEPT",
    "score": {
-    "S": 3.8159,
+    "S": 882648.0,
     "P_total_s": 1.9188,
-    "size_factor": 1.9887,
-    "final_pi_bytes": 520000,
+    "size_factor": 460000,
+    "final_pi_bytes": 460000,
     "pass_totals_s": [
      1.9228,
      1.9188,
      1.9163
     ],
     "median_pass": 2,
-    "size_ref": 524288,
     "M": 16,
     "sum_n": 4194304,
     "c_P": 1.031,
@@ -499,8 +490,8 @@
    "truncated": false,
    "reasons": [
     "not scored in every: output 2 rejected by acc",
-    "final: 3.8159 s beats the record pr5-b08f59d2dfd5 (5.1021 s) by 25.2%",
-    "confirmed: the confirmation run also takes the record of final (final: 3.8159 s, then 3.8037 s); the record keeps the worse run in each track"
+    "final: 882648.0000 s*B beats the record pr5-b08f59d2dfd5 (940680.0000 s*B) by 6.2%",
+    "confirmed: the confirmation run also takes the record of final (final: 882648.0000 s*B, then 879842.0000 s*B); the record keeps the worse run in each track"
    ],
    "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/106",
    "tag": "rf-source/pr7-acd08d0c260f",
@@ -519,9 +510,9 @@
    "against": {
     "final": {
      "record": "pr5-b08f59d2dfd5",
-     "S": 3.8159,
-     "S_record": 5.1021,
-     "gain": 0.2521,
+     "S": 882648.0,
+     "S_record": 940680.0,
+     "gain": 0.06169154228855722,
      "beats": true
     },
     "every": null
@@ -537,17 +528,16 @@
     "run": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/123",
     "result": "results/pr7-acd08d0c260f-confirm.json",
     "first_score": {
-     "S": 3.8159,
+     "S": 882648.0,
      "P_total_s": 1.9188,
-     "size_factor": 1.9887,
-     "final_pi_bytes": 520000,
+     "size_factor": 460000,
+     "final_pi_bytes": 460000,
      "pass_totals_s": [
       1.9228,
       1.9188,
       1.9163
      ],
      "median_pass": 2,
-     "size_ref": 524288,
      "M": 16,
      "sum_n": 4194304,
      "c_P": 1.031,
@@ -559,17 +549,16 @@
      }
     },
     "score": {
-     "S": 3.8037,
+     "S": 879842.0,
      "P_total_s": 1.9127,
-     "size_factor": 1.9887,
-     "final_pi_bytes": 520000,
+     "size_factor": 460000,
+     "final_pi_bytes": 460000,
      "pass_totals_s": [
       1.9167,
       1.9127,
       1.9102
      ],
      "median_pass": 2,
-     "size_ref": 524288,
      "M": 16,
      "sum_n": 4194304,
      "c_P": 1.031,
@@ -604,12 +593,12 @@
    "status": "record",
    "verdict": "ACCEPT",
    "score": {
-    "S": 3.2335,
+    "S": 625268.0,
     "P_total_s": 2.2331,
-    "size_factor": 1.448,
+    "size_factor": 280000,
     "final_pi_bytes": 280000,
-    "S_every": 3.5943,
-    "size_factor_every": 1.6095,
+    "S_every": 803916.0,
+    "size_factor_every": 360000,
     "max_pi_bytes": 360000,
     "pass_totals_s": [
      2.2378,
@@ -617,7 +606,6 @@
      2.2302
     ],
     "median_pass": 2,
-    "size_ref": 524288,
     "M": 16,
     "sum_n": 4194304,
     "c_P": 1.031,
@@ -629,9 +617,9 @@
    "comparable": true,
    "truncated": false,
    "reasons": [
-    "final: 3.2335 s beats the record pr7-acd08d0c260f (3.8160 s) by 15.3%",
-    "every: 3.5943 s beats the record pr5-b08f59d2dfd5 (5.6713 s) by 36.6%",
-    "confirmed: the confirmation run also takes the record of final, every (final: 3.2335 s, then 3.2232 s; every: 3.5943 s, then 3.5828 s); the record keeps the worse run in each track"
+    "final: 625268.0000 s*B beats the record pr7-acd08d0c260f (882648.0000 s*B) by 29.2%",
+    "every: 803916.0000 s*B beats the record pr5-b08f59d2dfd5 (1230120.0000 s*B) by 34.6%",
+    "confirmed: the confirmation run also takes the record of final, every (final: 625268.0000 s*B, then 623280.0000 s*B; every: 803916.0000 s*B, then 801360.0000 s*B); the record keeps the worse run in each track"
    ],
    "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/107",
    "tag": "rf-source/pr8-f87ede97e4c7",
@@ -650,16 +638,16 @@
    "against": {
     "final": {
      "record": "pr7-acd08d0c260f",
-     "S": 3.2335,
-     "S_record": 3.816,
-     "gain": 0.1526,
+     "S": 625268.0,
+     "S_record": 882648.0,
+     "gain": 0.2915998223527386,
      "beats": true
     },
     "every": {
      "record": "pr5-b08f59d2dfd5",
-     "S": 3.5943,
-     "S_record": 5.6713,
-     "gain": 0.3662,
+     "S": 803916.0,
+     "S_record": 1230120.0,
+     "gain": 0.346473514779046,
      "beats": true
     }
    },
@@ -675,12 +663,12 @@
     "run": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/124",
     "result": "results/pr8-f87ede97e4c7-confirm.json",
     "first_score": {
-     "S": 3.2335,
+     "S": 625268.0,
      "P_total_s": 2.2331,
-     "size_factor": 1.448,
+     "size_factor": 280000,
      "final_pi_bytes": 280000,
-     "S_every": 3.5943,
-     "size_factor_every": 1.6095,
+     "S_every": 803916.0,
+     "size_factor_every": 360000,
      "max_pi_bytes": 360000,
      "pass_totals_s": [
       2.2378,
@@ -688,7 +676,6 @@
       2.2302
      ],
      "median_pass": 2,
-     "size_ref": 524288,
      "M": 16,
      "sum_n": 4194304,
      "c_P": 1.031,
@@ -698,12 +685,12 @@
      }
     },
     "score": {
-     "S": 3.2232,
+     "S": 623280.0,
      "P_total_s": 2.226,
-     "size_factor": 1.448,
+     "size_factor": 280000,
      "final_pi_bytes": 280000,
-     "S_every": 3.5828,
-     "size_factor_every": 1.6095,
+     "S_every": 801360.0,
+     "size_factor_every": 360000,
      "max_pi_bytes": 360000,
      "pass_totals_s": [
       2.2306,
@@ -711,7 +698,6 @@
       2.2231
      ],
      "median_pass": 2,
-     "size_ref": 524288,
      "M": 16,
      "sum_n": 4194304,
      "c_P": 1.031,
@@ -743,12 +729,12 @@
    "status": "unranked",
    "verdict": "ACCEPT",
    "score": {
-    "S": 4.2317,
+    "S": 836389.0,
     "P_total_s": 2.8841,
-    "size_factor": 1.4673,
+    "size_factor": 290000,
     "final_pi_bytes": 290000,
-    "S_every": 4.7038,
-    "size_factor_every": 1.631,
+    "S_every": 1067117.0,
+    "size_factor_every": 370000,
     "max_pi_bytes": 370000,
     "pass_totals_s": [
      2.8901,
@@ -756,7 +742,6 @@
      2.8803
     ],
     "median_pass": 2,
-    "size_ref": 524288,
     "M": 16,
     "sum_n": 4194304,
     "c_P": 1.031,
@@ -809,12 +794,12 @@
    "status": "error",
    "verdict": "ACCEPT",
    "score": {
-    "S": 4.6227,
+    "S": 951173.0,
     "P_total_s": 3.0683,
-    "size_factor": 1.5066,
+    "size_factor": 310000,
     "final_pi_bytes": 310000,
-    "S_every": 5.1384,
-    "size_factor_every": 1.6747,
+    "S_every": 1196637.0,
+    "size_factor_every": 390000,
     "max_pi_bytes": 390000,
     "pass_totals_s": [
      3.0748,
@@ -822,7 +807,6 @@
      3.0643
     ],
     "median_pass": 2,
-    "size_ref": 524288,
     "M": 16,
     "sum_n": 4194304,
     "c_P": 1.031,
@@ -918,12 +902,12 @@
    "status": "record",
    "verdict": "ACCEPT",
    "score": {
-    "S": 3.1455,
+    "S": 594324.0,
     "P_total_s": 2.2012,
-    "size_factor": 1.429,
+    "size_factor": 270000,
     "final_pi_bytes": 270000,
-    "S_every": 3.5048,
-    "size_factor_every": 1.5884,
+    "S_every": 776505.6,
+    "size_factor_every": 350000,
     "max_pi_bytes": 350000,
     "pass_totals_s": [
      2.2058,
@@ -931,7 +915,6 @@
      2.1983
     ],
     "median_pass": 2,
-    "size_ref": 524288,
     "M": 16,
     "sum_n": 4194304,
     "c_P": 1.031,
@@ -941,12 +924,12 @@
     },
     "by_track": {
      "every": {
-      "S": 3.1397,
+      "S": 593798.4,
       "P_total_s": 2.196,
-      "size_factor": 1.4297,
+      "size_factor": 270400,
       "final_pi_bytes": 270400,
-      "S_every": 3.5048,
-      "size_factor_every": 1.596,
+      "S_every": 776505.6,
+      "size_factor_every": 353600,
       "max_pi_bytes": 353600,
       "pass_totals_s": [
        2.2006,
@@ -954,7 +937,6 @@
        2.1931
       ],
       "median_pass": 2,
-      "size_ref": 524288,
       "M": 16,
       "sum_n": 4194304,
       "c_P": 1.031
@@ -964,9 +946,9 @@
    "comparable": true,
    "truncated": false,
    "reasons": [
-    "final: 3.1455 s beats the record pr8-f87ede97e4c7 (3.2335 s) by 2.7%",
-    "every: 3.5048 s beats the record pr8-f87ede97e4c7 (3.5942 s) by 2.5%",
-    "confirmed: the confirmation run also takes the record of final, every (final: 3.1455 s, then 3.1397 s; every: 3.4964 s, then 3.5048 s); the record keeps the worse run in each track",
+    "final: 594324.0000 s*B beats the record pr8-f87ede97e4c7 (625268.0000 s*B) by 4.9%",
+    "every: 776505.6000 s*B beats the record pr8-f87ede97e4c7 (803916.0000 s*B) by 3.4%",
+    "confirmed: the confirmation run also takes the record of final, every (final: 594324.0000 s*B, then 593798.4000 s*B; every: 770420.0000 s*B, then 776505.6000 s*B); the record keeps the worse run in each track",
     "retired by the owner (final)"
    ],
    "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/111",
@@ -986,16 +968,16 @@
    "against": {
     "final": {
      "record": "pr8-f87ede97e4c7",
-     "S": 3.1455,
-     "S_record": 3.2335,
-     "gain": 0.0272,
+     "S": 594324.0,
+     "S_record": 625268.0,
+     "gain": 0.04948917904002759,
      "beats": true
     },
     "every": {
      "record": "pr8-f87ede97e4c7",
-     "S": 3.5048,
-     "S_record": 3.5942,
-     "gain": 0.0249,
+     "S": 776505.6,
+     "S_record": 803916.0,
+     "gain": 0.03409609959249482,
      "beats": true
     }
    },
@@ -1014,12 +996,12 @@
     "run": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/125",
     "result": "results/pr15-88ac9a1a0f02-confirm.json",
     "first_score": {
-     "S": 3.1455,
+     "S": 594324.0,
      "P_total_s": 2.2012,
-     "size_factor": 1.429,
+     "size_factor": 270000,
      "final_pi_bytes": 270000,
-     "S_every": 3.4964,
-     "size_factor_every": 1.5884,
+     "S_every": 770420.0,
+     "size_factor_every": 350000,
      "max_pi_bytes": 350000,
      "pass_totals_s": [
       2.2058,
@@ -1027,7 +1009,6 @@
       2.1983
      ],
      "median_pass": 2,
-     "size_ref": 524288,
      "M": 16,
      "sum_n": 4194304,
      "c_P": 1.031,
@@ -1037,12 +1018,12 @@
      }
     },
     "score": {
-     "S": 3.1397,
+     "S": 593798.4,
      "P_total_s": 2.196,
-     "size_factor": 1.4297,
+     "size_factor": 270400,
      "final_pi_bytes": 270400,
-     "S_every": 3.5048,
-     "size_factor_every": 1.596,
+     "S_every": 776505.6,
+     "size_factor_every": 353600,
      "max_pi_bytes": 353600,
      "pass_totals_s": [
       2.2006,
@@ -1050,7 +1031,6 @@
       2.1931
      ],
      "median_pass": 2,
-     "size_ref": 524288,
      "M": 16,
      "sum_n": 4194304,
      "c_P": 1.031,
@@ -1080,12 +1060,12 @@
    "status": "accepted",
    "verdict": "ACCEPT",
    "score": {
-    "S": 3.0665,
+    "S": 579393.0,
     "P_total_s": 2.1459,
-    "size_factor": 1.429,
+    "size_factor": 270000,
     "final_pi_bytes": 270000,
-    "S_every": 3.4086,
-    "size_factor_every": 1.5884,
+    "S_every": 751065.0,
+    "size_factor_every": 350000,
     "max_pi_bytes": 350000,
     "pass_totals_s": [
      2.1504,
@@ -1093,7 +1073,6 @@
      2.1431
     ],
     "median_pass": 2,
-    "size_ref": 524288,
     "M": 16,
     "sum_n": 4194304,
     "c_P": 1.031,
@@ -1285,9 +1264,9 @@
    "status": "record",
    "verdict": "ACCEPT",
    "score": {
-    "S": 3.1014,
+    "S": 541968.0,
     "P_total_s": 2.2582,
-    "size_factor": 1.3734,
+    "size_factor": 240000,
     "final_pi_bytes": 240000,
     "pass_totals_s": [
      2.2629,
@@ -1295,7 +1274,6 @@
      2.2553
     ],
     "median_pass": 2,
-    "size_ref": 524288,
     "M": 16,
     "sum_n": 4194304,
     "c_P": 1.031,
@@ -1310,8 +1288,8 @@
    "truncated": false,
    "reasons": [
     "not scored in every: output 2 rejected by acc",
-    "final: 3.1014 s beats the record pr8-f87ede97e4c7 (3.2335 s) by 4.1%",
-    "confirmed: the confirmation run also takes the record of final (final: 3.0922 s, then 3.1014 s); the record keeps the worse run in each track"
+    "final: 541968.0000 s*B beats the record pr8-f87ede97e4c7 (625268.0000 s*B) by 13.3%",
+    "confirmed: the confirmation run also takes the record of final (final: 540360.0000 s*B, then 541968.0000 s*B); the record keeps the worse run in each track"
    ],
    "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/126",
    "tag": "rf-source/pr18-ab84b4f3b9cc",
@@ -1330,9 +1308,9 @@
    "against": {
     "final": {
      "record": "pr8-f87ede97e4c7",
-     "S": 3.1014,
-     "S_record": 3.2335,
-     "gain": 0.0409,
+     "S": 541968.0,
+     "S_record": 625268.0,
+     "gain": 0.13322287403161526,
      "beats": true
     },
     "every": null
@@ -1348,9 +1326,9 @@
     "run": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/126",
     "result": "results/pr18-ab84b4f3b9cc-confirm.json",
     "first_score": {
-     "S": 3.0922,
+     "S": 540360.0,
      "P_total_s": 2.2515,
-     "size_factor": 1.3734,
+     "size_factor": 240000,
      "final_pi_bytes": 240000,
      "pass_totals_s": [
       2.2562,
@@ -1358,7 +1336,6 @@
       2.2486
      ],
      "median_pass": 2,
-     "size_ref": 524288,
      "M": 16,
      "sum_n": 4194304,
      "c_P": 1.031,
@@ -1370,9 +1347,9 @@
      }
     },
     "score": {
-     "S": 3.1014,
+     "S": 541968.0,
      "P_total_s": 2.2582,
-     "size_factor": 1.3734,
+     "size_factor": 240000,
      "final_pi_bytes": 240000,
      "pass_totals_s": [
       2.2629,
@@ -1380,7 +1357,6 @@
       2.2553
      ],
      "median_pass": 2,
-     "size_ref": 524288,
      "M": 16,
      "sum_n": 4194304,
      "c_P": 1.031,

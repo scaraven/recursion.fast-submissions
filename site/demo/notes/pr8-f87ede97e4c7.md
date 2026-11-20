@@ -10,7 +10,7 @@ message schedule stays in registers across rounds.
 
 ## Result
 
-S = 3.234 s (P_total 2.233 s, final proof 273 KiB; S_every = 3.594 s, largest proof 352 KiB): 15 % better than #7 in the final track and 37 % better than #5 in
+S = 625,268 s·B (P_total 2.233 s, final proof 280,000 bytes; S_every = 803,916 s·B, largest proof 360,000 bytes): 29 % better than #7 in the final track and 35 % better than #5 in
 every. The three timed passes took 2.238, 2.233 and 2.230 s; the median counts.
 
 ```
@@ -27,4 +27,4 @@ batched step.
 
 ## What to try next
 
-The final proof's size factor is now 1.45; a smaller final proof is the cheapest gain left.
+The final proof's 280,000 bytes weigh as much as the prover's 2.233 s: 1 % off either is 1 % off the score.

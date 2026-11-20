@@ -135,9 +135,9 @@
     gains nothing by remembering an earlier check.</p>
   <p>An entry that fails a <em>final</em> condition is rejected; one that meets <em>final</em> but
     not <em>every</em> is ranked in <em>final</em> only, and its result says why.</p>
-  <div class="formula" role="math" aria-label="S equals P total times 2 to the power of the final proof size over 512 kibibytes; S every equals P total times 2 to the power of the largest proof size over 512 kibibytes; P total is the median of the three timed passes' totals of the step times">
-    <span class="lhs"><i>S</i></span> = <i>P</i><sub>total</sub> &middot; 2<sup>|<i>&pi;</i><sub>16</sub>| / 512&nbsp;KiB</sup> &nbsp;(final)<br>
-    <span class="lhs"><i>S</i><sub>every</sub></span> = <i>P</i><sub>total</sub> &middot; 2<sup>max<sub><i>i</i></sub> |<i>&pi;<sub>i</sub></i>| / 512&nbsp;KiB</sup> &nbsp;(every)<br>
+  <div class="formula" role="math" aria-label="S equals P total times the final proof's size in bytes; S every equals P total times the largest proof's size in bytes; P total is the median of the three timed passes' totals of the step times">
+    <span class="lhs"><i>S</i></span> = <i>P</i><sub>total</sub> &middot; |<i>&pi;</i><sub>16</sub>| &nbsp;(final)<br>
+    <span class="lhs"><i>S</i><sub>every</sub></span> = <i>P</i><sub>total</sub> &middot; max<sub><i>i</i></sub> |<i>&pi;<sub>i</sub></i>| &nbsp;(every)<br>
     <span class="lhs"><i>P</i><sub>total</sub></span> = median<sub><i>t</i> = 1, 2, 3</sub> &Sigma;<sub><i>i</i></sub> <i>P<sub>i,t</sub></i>
   </div>
   <p><strong>In plain words.</strong></p>
@@ -150,16 +150,19 @@
       a proof (1&nbsp;MiB). The recursion can be: in <em>final</em>, a last compression of the
       final proof pays. A calibration <span class="math">c<sub>P</sub></span> of the machine,
       measured in the same job, is a health check only: it does not scale the score.</li>
-    <li>Each track prices its own proofs. <em>final</em> prices the final proof:
-      &times;1.41 at 256&nbsp;KiB, &times;2 at the 512&nbsp;KiB cap. <em>every</em> prices the
-      largest of the 16 proofs, so an intermediate proof near the 1&nbsp;MiB cap costs up to
-      &times;4. Check time is not scored; it is capped.</li>
+    <li>Each track prices its own proofs, by their size <span class="math">|&pi;|</span> in
+      bytes. <em>final</em> prices the final proof; <em>every</em> prices the largest of the 16
+      proofs, so an intermediate proof larger than the final one costs in <em>every</em> what it
+      does not cost in <em>final</em>. The score is a plain product, in seconds&nbsp;&middot;&nbsp;bytes
+      (s&middot;B): a 2.2&nbsp;s prover with a 280,000-byte proof scores 616,000&nbsp;s&middot;B.
+      Check time is not scored; it is capped.</li>
   </ul>
-  <p class="intuition">The competition wants a very fast prover for committing to and hashing
-    Keccak-256 data first, and a recursion step that is good enough second. Lower is better: halve
-    the prover time and the score halves; shrink the priced proof by 128&nbsp;KiB and it drops by
-    about 16&nbsp;% (1&nbsp;KiB is about 0.135&nbsp;%, and 10&nbsp;% of the prover time is worth
-    about 78&nbsp;KiB).</p>
+  <p class="intuition">Lower is better, and prover time and proof size weigh alike: 1&nbsp;% off the
+    priced proof is worth exactly as much as 1&nbsp;% off the prover time. Halve the prover time
+    and the score halves; halve the proof and it halves too. So a smaller proof alone beats the
+    standing record once it is more than 2&nbsp;% smaller, the record margin. The caps bound the
+    proofs (the final one at 512&nbsp;KiB, each other at 1&nbsp;MiB); below them, every byte
+    counts.</p>
 
   <h2 id="record">What makes a record</h2>
   <p>Every entry is evaluated on the organiser's own server, in a throwaway virtual machine per job,
@@ -187,8 +190,8 @@
       bot runs the same commit once more at the same pin, before any other entry. The record is
       taken only if that run too is a comparable, attested ACCEPT that beats the standing record by
       the margin, and in each track it keeps the <em>worse</em> of the two runs, with all of that
-      track's parts (<span class="math">P</span><sub>total</sub>, the passes, the size factor and
-      proof size) from that run. Otherwise the entry is <em>accepted</em> if the confirmation is an
+      track's parts (<span class="math">P</span><sub>total</sub>, the passes and the priced
+      proof's size) from that run. Otherwise the entry is <em>accepted</em> if the confirmation is an
       ACCEPT that ranks, or takes the confirmation's own status (a REJECT makes it
       <em>rejected</em>).</li>
   </ul>

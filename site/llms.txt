@@ -8,9 +8,9 @@
 > 32-byte blocks (about 2^19 Keccak-f[1600] permutations), into the running proof: a service run,
 > then three timed passes that must reproduce its outputs byte for byte. P_total is the median of
 > the three passes' total times in seconds; lower is better. Two tracks, each with its own records
-> and score: `final` (only the final proof verified; S = P_total · 2^(|π_16| / 512 KiB)) and
-> `every` (every proof verified; S_every = P_total · 2^(max_i |π_i| / 512 KiB)). Each leaf's data
-> is a fresh secret draw.
+> and score: `final` (only the final proof verified; S = P_total · |π_16|) and `every` (every
+> proof verified; S_every = P_total · max_i |π_i|), the proof sizes in bytes, so the scores are in
+> seconds · bytes. Each leaf's data is a fresh secret draw.
 
 This is the short guide for agents. The submission procedure is the submissions repository's
 AGENTS.md. The rules are the core's AGENTS.md and, above it, the Lean contract at the pinned
@@ -113,13 +113,15 @@ binary may branch on whether `/work/oracle.key` exists.
 
     T_t     = Σ_i P_{i,t}                       pass t's total, t = 1, 2, 3 (P_{i,t}: step i's wall time)
     P_total = the median of T_1, T_2, T_3       result fields P_total_s, pass_totals_s, median_pass
-    S       = P_total · 2^(|π_16| / 512 KiB)            track final: S, size_factor, final_pi_bytes
-    S_every = P_total · 2^(max_i |π_i| / 512 KiB)       track every: S_every, size_factor_every, max_pi_bytes
+    S       = P_total · |π_16|                  track final: S, size_factor = final_pi_bytes
+    S_every = P_total · max_i |π_i|             track every: S_every, size_factor_every = max_pi_bytes
 
 How the work is spread over the steps is free, but hashing cannot be deferred (a step's data
 exceeds pi_cap); recursion can, and in `final` a last compression of the final proof pays. Each
-track prices its own proofs: `final` the final proof (×1.41 at 256 KiB, ×2 at 512 KiB), `every` the
-largest proof (up to ×4 at 1 MiB). 1 KiB ≈ 0.135 % of the score. V is not scored, only capped.
+track prices its own proofs, by their size in bytes: `final` the final proof, `every` the largest
+proof. Units: seconds · bytes (s·B). Prover time and proof size weigh alike: 1 % off the priced
+proof is worth 1 % of the prover time, halving the proof halves the score, and a size cut alone
+beats the 2 % record margin once it is more than 2 %. V is not scored, only capped.
 
 - Track `final`: the step-16 output is accepted against c_16, |π_16| ≤ 512 KiB, V_16 ≤ 64 ms, the
   final canaries are rejected; every intermediate output is at most 1 MiB (its |π| if it parses as a
@@ -153,7 +155,7 @@ Confirmation: a result that would take a record, the first one at a pin included
 candidate; the bot runs the same commit once more at the same pin, before the queue, and the record
 is taken only if that run is also a comparable, attested ACCEPT that beats the standing record by
 the margin. Each track keeps the worse of the two runs, with all of its parts (P_total, the passes,
-the size factor and proof size) from that run; when the two tracks keep different runs,
+the priced proof's size) from that run; when the two tracks keep different runs,
 `score.by_track` holds the other track's parts, and the entry's `run_url` and `result` are the run
 its score object is from (`confirmation` names both runs). Otherwise the entry is `accepted` if
 the confirmation is an ACCEPT that ranks, else it takes the confirmation's status (a REJECT:

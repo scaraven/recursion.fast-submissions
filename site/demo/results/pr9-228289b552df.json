@@ -22,12 +22,12 @@
  ],
  "prover_sha256": "0000000000000000000000000000000000000000000000000000000000011667",
  "score": {
-  "S": 4.2317,
+  "S": 836389.0,
   "P_total_s": 2.8841,
-  "size_factor": 1.4673,
+  "size_factor": 290000,
   "final_pi_bytes": 290000,
-  "S_every": 4.7038,
-  "size_factor_every": 1.631,
+  "S_every": 1067117.0,
+  "size_factor_every": 370000,
   "max_pi_bytes": 370000,
   "pass_totals_s": [
    2.8901,
@@ -35,7 +35,6 @@
    2.8803
   ],
   "median_pass": 2,
-  "size_ref": 524288,
   "M": 16,
   "sum_n": 4194304,
   "c_P": 1.031,

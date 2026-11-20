@@ -20,12 +20,12 @@
  "reasons": [],
  "prover_sha256": "0000000000000000000000000000000000000000000000000000000000013556",
  "score": {
-  "S": 4.6227,
+  "S": 951173.0,
   "P_total_s": 3.0683,
-  "size_factor": 1.5066,
+  "size_factor": 310000,
   "final_pi_bytes": 310000,
-  "S_every": 5.1384,
-  "size_factor_every": 1.6747,
+  "S_every": 1196637.0,
+  "size_factor_every": 390000,
   "max_pi_bytes": 390000,
   "pass_totals_s": [
    3.0748,
@@ -33,7 +33,6 @@
    3.0643
   ],
   "median_pass": 2,
-  "size_ref": 524288,
   "M": 16,
   "sum_n": 4194304,
   "c_P": 1.031,

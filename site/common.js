@@ -34,29 +34,68 @@
   // only). A score without `tracks` is an earlier season's (the sum alone) and counts in neither
   // track (`field: null`); earlier seasons' tracks (sum, product) are not shown as tabs.
   // Each track's parts: [field, label, unit, note], `note` marking a part shown but not scored (none
-  // now); `desc`: what each part is, under its number; `factor`/`size`: the record card's split.
+  // now); `desc`: what each part is, under its number; `size`: the priced proof's field and symbol;
+  // `factor`: the size factor's field (this season the priced proof's size in bytes itself, so it is
+  // not shown twice); `unit`: the unit of the score (this season: seconds times bytes).
   const P_DESC = 'the median of three timed passes\' totals over the 16 steps';
+  const UNIT = 's\u00b7B';
   const TRACKS = Object.freeze([
-    Object.freeze({ id: 'final', label: 'Final', sym: 'S', field: null,
-      formula: 'S = P_total \u00b7 2^(|\u03c0\u2081\u2086| / 512 KiB)',
-      parts: Object.freeze([['P_total_s', 'P_total', 's'], ['size_factor', 'size factor', ''], ['final_pi_bytes', '|\u03c0\u2081\u2086|', 'bytes']]),
-      desc: Object.freeze({ P_total_s: P_DESC, size_factor: '2^(|\u03c0\u2081\u2086| / 512 KiB)', final_pi_bytes: 'the final proof' }),
-      factor: '2^(|\u03c0\u2081\u2086|/512 KiB)', size: ['final_pi_bytes', '|\u03c0\u2081\u2086|'],
-      note: 'Seconds: the median of three timed passes\' totals over the 16 steps, times the final proof\'s size factor. Lower is better.',
-      blurb: 'Only the final proof is verified (at most 512 KiB, checked in at most 64 ms); each intermediate output need only fit in 1 MiB. S: the median of three timed passes\' total time over the 16 steps, in seconds, times the final proof\'s size factor.' }),
-    Object.freeze({ id: 'every', label: 'Every', sym: 'S_every', field: null,
-      formula: 'S_every = P_total \u00b7 2^(max |\u03c0\u1d62| / 512 KiB)',
-      parts: Object.freeze([['P_total_s', 'P_total', 's'], ['size_factor_every', 'size factor', ''], ['max_pi_bytes', 'max |\u03c0\u1d62|', 'bytes']]),
-      desc: Object.freeze({ P_total_s: P_DESC, size_factor_every: '2^(max |\u03c0\u1d62| / 512 KiB)', max_pi_bytes: 'the largest proof' }),
-      factor: '2^(max |\u03c0\u1d62|/512 KiB)', size: ['max_pi_bytes', 'max |\u03c0\u1d62|'],
-      note: 'Seconds: the median of three timed passes\' totals over the 16 steps, times the largest proof\'s size factor. Lower is better.',
-      blurb: 'Every proof is verified: each intermediate proof too is accepted against its statement (at most 1 MiB, checked in at most 64 ms). S_every: the same P_total, times the size factor of the largest of the 16 proofs.' })
+    Object.freeze({ id: 'final', label: 'Final', sym: 'S', field: null, unit: UNIT, factor: 'size_factor',
+      formula: 'S = P_total \u00b7 |\u03c0\u2081\u2086|',
+      parts: Object.freeze([['P_total_s', 'P_total', 's'], ['final_pi_bytes', '|\u03c0\u2081\u2086|', 'B']]),
+      desc: Object.freeze({ P_total_s: P_DESC, final_pi_bytes: 'the final proof, in bytes' }),
+      size: ['final_pi_bytes', '|\u03c0\u2081\u2086|'],
+      note: 'Seconds \u00b7 bytes: the median of three timed passes\' totals over the 16 steps, times the final proof\'s size in bytes. Lower is better.',
+      blurb: 'Only the final proof is verified (at most 512 KiB, checked in at most 64 ms); each intermediate output need only fit in 1 MiB. S: the median of three timed passes\' total time over the 16 steps, in seconds, times the final proof\'s size in bytes.' }),
+    Object.freeze({ id: 'every', label: 'Every', sym: 'S_every', field: null, unit: UNIT, factor: 'size_factor_every',
+      formula: 'S_every = P_total \u00b7 max |\u03c0\u1d62|',
+      parts: Object.freeze([['P_total_s', 'P_total', 's'], ['max_pi_bytes', 'max |\u03c0\u1d62|', 'B']]),
+      desc: Object.freeze({ P_total_s: P_DESC, max_pi_bytes: 'the largest proof, in bytes' }),
+      size: ['max_pi_bytes', 'max |\u03c0\u1d62|'],
+      note: 'Seconds \u00b7 bytes: the median of three timed passes\' totals over the 16 steps, times the largest proof\'s size in bytes. Lower is better.',
+      blurb: 'Every proof is verified: each intermediate proof too is accepted against its statement (at most 1 MiB, checked in at most 64 ms). S_every: the same P_total, times the size in bytes of the largest of the 16 proofs.' })
   ]);
   const TRACK_IDS = TRACKS.map(t => t.id);
   const trackOf = id => TRACKS.find(t => t.id === id) || TRACKS[0];
-  // The track definition whose parts describe a score in track `tr`: the track's own, except for a
-  // result of the first v6 rules (before the leaf data), which scored `every` by the final proof's `S`.
-  const pricedBy = (tr, sc) => (sc && sc.tracks && sc.tracks[tr.id] === 'S' && tr.id !== 'final') ? TRACKS[0] : tr;
+  // An earlier v6 season's pricing (a result with `score.size_ref`, bytes): the exponential factor
+  // 2^(|\u03c0| / size_ref), the score in seconds, its parts P_total, the factor and the proof size.
+  // One frozen definition per track and scale.
+  const OLD_RULES = new Map();
+  function oldRule(tr, ref) {
+    const r = typeof ref === 'number' && Number.isFinite(ref) && ref > 0 ? ref : 524288;
+    const key = tr.id + ':' + r;
+    if (OLD_RULES.has(key)) return OLD_RULES.get(key);
+    const scale = r % 1048576 === 0 ? (r / 1048576) + ' MiB' : r % 1024 === 0 ? (r / 1024) + ' KiB' : r + ' bytes';
+    const [sk, sl] = tr.size, x = `2^(${sl} / ${scale})`;
+    const what = tr.id === 'final' ? 'the final proof\'s' : 'the largest proof\'s';
+    const d = Object.freeze(Object.assign({}, tr, { unit: 's', old: true, factorText: `2^(${sl}/${scale})`,
+      formula: `${tr.sym} = P_total \u00b7 ${x}`,
+      parts: Object.freeze([['P_total_s', 'P_total', 's'], [tr.factor, 'size factor', ''], [sk, sl, 'bytes']]),
+      desc: Object.freeze(Object.assign({}, tr.desc, { [tr.factor]: x, [sk]: tr.id === 'final' ? 'the final proof' : 'the largest proof' })),
+      note: `Seconds (an earlier season's rule): the median of three timed passes' totals over the 16 steps, times ${what} size factor ${x}. Lower is better.` }));
+    OLD_RULES.set(key, d);
+    return d;
+  }
+  // Whether a score is priced at this season's rule (its size factor is the final proof's size in
+  // bytes), or at an earlier v6 season's exponential one (`size_ref`).
+  function productRule(sc) {
+    if (!sc) return true;
+    if ('size_ref' in sc) return false;
+    const f = sc.size_factor, pi = sc.final_pi_bytes;
+    return typeof f !== 'number' || (typeof pi === 'number' && pi > 0 && Math.abs(f - pi) <= 1e-9 * pi);
+  }
+  // The track definition whose parts describe a score in track `tr`: the track's own at the score's
+  // rule (this season's, or an earlier v6 season's exponential, `oldRule`), except for a result of
+  // the first v6 rules (before the leaf data), which scored `every` by the final proof's `S`.
+  function pricedBy(tr, sc) {
+    const t = (sc && sc.tracks && sc.tracks[tr.id] === 'S' && tr.id !== 'final') ? TRACKS[0] : tr;
+    return productRule(sc) ? t : oldRule(t, sc.size_ref);
+  }
+  // A unit as text and nodes, an exponent (`^(x)`) raised.
+  function unitNode(u) {
+    const m = /^(.*)\^\((.+)\)$/.exec(u || '');
+    return m ? [m[1], el('sup', null, m[2])] : [u || ''];
+  }
 
   // An id is pr<N>-<12 hex of the head sha>, with -<8 hex of the pin> for a record ported to a new pin.
   const ID = 'pr[1-9]\\d{0,8}-[0-9a-f]{12}(?:-[0-9a-f]{8})?';
@@ -133,7 +172,7 @@
     return (out.S === null && out.P_bar === null && out.V_bar === null && n === 0) ? null : out;
   }
 
-  // The parts shown with a score in track `track` (P_total, the size factor, the proof size, the
+  // The parts shown with a score in track `track` (P_total, the size factor and the proof size, the
   // passes): the score's own, or for a confirmed record whose tracks keep different runs, that
   // track's run's (`score.by_track[track]`), so a track's parts and its score are of one run.
   function partsIn(sc, track) {
@@ -357,14 +396,16 @@
     if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) return '\u2013';
     return v >= 1048576 ? (v / 1048576).toFixed(2) + '\u00a0MiB' : v >= 1024 ? Math.round(v / 1024) + '\u00a0KiB' : Math.round(v) + '\u00a0B';
   }
-  // A component of a score in its unit: seconds, bytes, or a plain number.
+  // A component of a score in its unit: seconds, bytes (`B`: exact, a factor of the score), or a plain number.
   function fmtPart(v, unit) {
     if (typeof v !== 'number' || !Number.isFinite(v)) return '\u2013';
+    if (unit === 'B') return v >= 0 ? Math.round(v).toLocaleString('en-US') + '\u00a0B' : '\u2013';
     return unit === 'bytes' ? fmtBytes(v) : unit === 's' ? fmtS(v) : (Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(3));
   }
   function fmtS(v) {
     if (v === null || v === undefined) return '–';
     const a = Math.abs(v);
+    if (a >= 1e5) return Math.round(v).toLocaleString('en-US');      // a score in s\u00b7B
     return a >= 100 ? v.toFixed(1) : a >= 10 ? v.toFixed(2) : v.toFixed(3);
   }
   const pad = n => String(n).padStart(2, '0');
@@ -526,7 +567,7 @@
   }
 
   window.RF = {
-    CFG, BASE, dataKey, STATUSES, STATUS_INFO, RE, TRACKS, TRACK_IDS, trackOf, pricedBy, partsIn, scoreIn, retiredIn, chosenTrack, rememberTrack,
+    CFG, BASE, dataKey, STATUSES, STATUS_INFO, RE, TRACKS, TRACK_IDS, trackOf, pricedBy, unitNode, partsIn, scoreIn, retiredIn, chosenTrack, rememberTrack,
     loadData, loadText, el, svg, ext, page, link, fmtS, fmtPart, fmtBytes, fmtDate, fmtDateTime, timeEl, ago, badge,
     shortSha, gainOf, marginText, pct, unverified, evaluatedAt, relations, records, nameOf, section, chrome, footer
   };

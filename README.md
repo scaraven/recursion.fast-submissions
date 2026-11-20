@@ -27,9 +27,10 @@ The machine is an AMD Ryzen 7 PRO 8700GE (Zen 4, 8 cores / 16 threads); the benc
 x86-64-v4 (AVX2, FMA, BMI1/2 and AVX-512 F, CD, BW, DQ, VL), plus ADX, AES-NI, SHA-NI, VAES, VPCLMULQDQ, GFNI and AVX-512 IFMA, VBMI, VBMI2, VNNI, BITALG, VPOPCNTDQ and BF16. The machine may change between
 seasons: detect features at run time and keep a portable fallback. `P_total` is the median of
 the three timed passes' totals over the 16 steps, in seconds. Two tracks rank it, each with its own
-records and its own size factor, lower is better: **final**, where only the final proof is verified
-(at most 512 KiB), scores `S = P_total · 2^(|π_16| / 512 KiB)`, and **every**, where every proof
-is (each at most 1 MiB), scores `S_every = P_total · 2^(max_i |π_i| / 512 KiB)`. Every checked
+records and its own priced proof, lower is better: **final**, where only the final proof is verified
+(at most 512 KiB), scores `S = P_total · |π_16|`, and **every**, where every proof is (each at most
+1 MiB), scores `S_every = P_total · max_i |π_i|`, the proof sizes in bytes and the scores in
+seconds · bytes: 1 % off the proof is worth 1 % off the prover time. Every checked
 proof must verify within 64 ms (the median of three fresh runs of the verifier), a step has 20 s
 and the prover 8 GiB. An entry that meets `final` but not `every` is ranked in `final` only.
 Soundness is never measured, because it is a theorem.

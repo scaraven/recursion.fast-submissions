@@ -10,8 +10,8 @@ time in AVX2 registers, so the lanes stay busy.
 
 ## Result
 
-S = 5.102 s, a 55 % gain over #3. Smaller openings also shrink the final proof to 254 KiB
-(293 KiB for #3), a size factor of 1.41 against 1.49.
+S = 940,680 s·B, a 59 % gain over #3. Smaller openings also shrink the final proof to 260,000
+bytes (300,000 for #3), 13 % off the score by themselves.
 
 ## What did not work
 

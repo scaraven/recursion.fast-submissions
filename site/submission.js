@@ -48,7 +48,7 @@
         el('span', null, RF.STATUS_INFO[e.status][1])),
       e.title ? el('p', { class: 'title' }, el('span', { class: 'muted' }, 'Pull request title (written by the submitter): '), e.title) : null));
 
-    // numbers: each track's score, with its own components (its own size factor and proof size) and
+    // numbers: each track's score, with its own components (P_total and its own priced proof's size) and
     // its comparison with the track's record (v6: S in `final`, S_every in `every`, or `final` only;
     // the reasons say why not in `every`; a result of the first v6 rules has one S in both)
     const sc = e.score;
@@ -60,21 +60,25 @@
       const field = sc.tracks ? sc.tracks[tr.id] : null;
       const repeat = field !== null && field === shownField;
       shownField = field;
+      // how this result is priced in the track (this season: the proof size in bytes, the score in
+      // s\u00b7B; an earlier v6 season's result: its exponential factor of the size, the score in seconds)
+      const pt = RF.pricedBy(tr, RF.partsIn(sc, tr.id));
       const m = (lbl, val, unit, note) => el('div', null, el('span', { class: 'lbl' }, lbl),
-        el('span', { class: 'val' }, fmtPart(val, unit), unit === 's' ? [' ', el('small', null, 's')] : null),
+        el('span', { class: 'val' }, unit === 'score' ? fmtS(val) : fmtPart(val, unit),
+          unit === 's' ? [' ', el('small', null, 's')] : unit === 'score' ? [' ', el('small', null, RF.unitNode(pt.unit))] : null),
         note ? el('span', { class: 'lbl' }, note) : null);
       const took = e.record_in.includes(tr.id);
-      parts.push(el('h2', { class: 'track-head' }, tr.label, ' ', el('span', { class: 'tab-formula' }, repeat ? `the same ${field} = ${fmtS(v)} s` : tr.formula),
+      parts.push(el('h2', { class: 'track-head' }, tr.label, ' ', el('span', { class: 'tab-formula' }, repeat ? `the same ${field} = ${fmtS(v)} ${pt.unit}` : pt.formula),
         took ? [' ', el('span', { class: 'badge ' + (retiredIn(e, tr.id) ? 'st-retired' : 'st-record') }, retiredIn(e, tr.id) ? 'record, retired' : 'took the record')] : null));
-      if (!repeat) parts.push(el('div', { class: 'metrics m' + (tr.parts.length + 1), role: 'group', 'aria-label': tr.label + ' score' },
-        m('Score ' + (field || tr.sym), v, 's', 'lower is better'),
-        tr.parts.map(([k, label, unit, note]) => m(label, RF.partsIn(sc, tr.id)[k], unit, note || tr.desc[k] || null))));
+      if (!repeat) parts.push(el('div', { class: 'metrics m' + (pt.parts.length + 1), role: 'group', 'aria-label': tr.label + ' score' },
+        m('Score ' + (field || tr.sym), v, 'score', 'lower is better'),
+        pt.parts.map(([k, label, unit, note]) => m(label, RF.partsIn(sc, tr.id)[k], unit, note || pt.desc[k] || null))));
       const a = e.against[tr.id];
       if (a) {
         const g = gainOf(e, tr.id);
         parts.push(el('p', { class: 'against' },
           el('strong', null, a.beats ? `Beat the standing ${tr.label.toLowerCase()} record.` : `Did not beat the standing ${tr.label.toLowerCase()} record.`), ' ',
-          `${field || tr.sym} = ${fmtS(a.S !== null ? a.S : v)} s against ${fmtS(a.S_record)} s of the record `, recOf(a.record),
+          `${field || tr.sym} = ${fmtS(a.S !== null ? a.S : v)} ${pt.unit} against ${fmtS(a.S_record)} ${pt.unit} of the record `, recOf(a.record),
           `, at the same contract pin: gain = ${pct(g)}. A record needs a gain of more than ${marginText(data)}.`));
       } else if (took && !e.record_of[tr.id]) {
         parts.push(el('p', { class: 'against' }, e.port_of ? `The previous pin's ${tr.label.toLowerCase()} record, re-run at a new contract pin before any other entry.`
@@ -162,7 +166,9 @@
     if (sc) {
       // the fields the track sections show; an earlier season's score (in no current track) shows them all here
       const inTrack = RF.TRACKS.some(t => scoreIn(e, t.id) !== null);
-      const shown = new Set(inTrack ? ['S', 'tracks', 'by_track', ...RF.TRACKS.flatMap(t => t.parts.map(p => p[0])), ...Object.values(sc.tracks || {})] : ['tracks', 'by_track']);
+      // (this season's size factors are the proof sizes the track sections show; an earlier v6
+      // season's factors are shown in them too)
+      const shown = new Set(inTrack ? ['S', 'tracks', 'by_track', ...RF.TRACKS.flatMap(t => [...t.parts.map(p => p[0]), t.factor]), ...Object.values(sc.tracks || {})] : ['tracks', 'by_track']);
       const rest = Object.entries(sc).filter(([k]) => !shown.has(k));
       // a confirmed record whose tracks keep different runs: the other run's numbers, per track
       const other = sc.by_track ? Object.entries(sc.by_track).flatMap(([t, o]) => Object.entries(o).map(([k, v]) => [`${k} (${t}: the other run)`, v])) : [];

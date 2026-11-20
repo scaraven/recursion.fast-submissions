@@ -227,10 +227,10 @@ gh pr create --repo scaraven/recursion.fast-submissions --base main --head LOGIN
    9) and runs the core's attested `evaluate.yml` at the pin on that tag.
 4. **Publish.** The bot verifies the attestation, decides the status and the record of each track
    (section 10), writes `data` (`submissions.json`, `results/<id>.json`, `notes.md`), comments the
-   verdict, the score with its parts (`S`, `P_total`, the size factor and the final proof's size;
-   `S_every`, its size factor and the largest proof's size; the three passes' totals and which is the
-   median), the tracks it counts in (with the core's reason when it is `final` only) and the comparison with
-   each track's standing record, and sets the commit status. On a new record of either track it
+   verdict, the score with its parts (`S`, `P_total` and the final proof's size; `S_every` and the
+   largest proof's size; the three passes' totals and which is the median), the tracks it counts
+   in (with the core's reason when it is `final` only) and the comparison with each track's
+   standing record, and sets the commit status. On a new record of either track it
    also copies the root to `main`.
 
 An id is `pr<N>-<first 12 hex of the head sha>`. The re-evaluation of a record after a pin move (a
@@ -355,14 +355,14 @@ margin.
 
 **Two tracks** rank every evaluation, each with its own score and its own records (the core's
 [§6](https://github.com/scaraven/recursion.fast/blob/main/AGENTS.md#6-the-benchmark) and
-[§7](https://github.com/scaraven/recursion.fast/blob/main/AGENTS.md#7-the-score); seconds, lower is
-better):
+[§7](https://github.com/scaraven/recursion.fast/blob/main/AGENTS.md#7-the-score); seconds · bytes,
+lower is better):
 
 ```
 T_t     = Σ_i P_{i,t}                         pass t's total, t = 1, 2, 3; P_{i,t} step i's wall time in pass t
 P_total = the median of T_1, T_2, T_3         the result's `P_total_s` (and `pass_totals_s`, `median_pass`)
-S       = P_total · 2^(|π_16| / 512 KiB)      track final: `S` (and `size_factor`, `final_pi_bytes`)
-S_every = P_total · 2^(max_i |π_i| / 512 KiB) track every: `S_every` (and `size_factor_every`, `max_pi_bytes`)
+S       = P_total · |π_16|                    track final: `S` (`size_factor` = `final_pi_bytes`, in bytes)
+S_every = P_total · max_i |π_i|               track every: `S_every` (`size_factor_every` = `max_pi_bytes`)
 ```
 
 - **`final`**: only the final proof is checked: accepted against `c_16`, `|π_16| ≤ 512 KiB`,
@@ -375,11 +375,12 @@ S_every = P_total · 2^(max_i |π_i| / 512 KiB) track every: `S_every` (and `siz
 Failing a `final` condition is a REJECT. Meeting `final` but not `every` ranks the entry in
 `final` only: its result's `score.tracks` is `{"final": "S"}` (else `{"final": "S", "every":
 "S_every"}`) and `tracks_reason` says why; the bot copies that reason into the comment and the
-entry's reasons. `V` is capped, not scored. Each track prices its own proofs: `final` the final
-proof (×1.41 at 256 KiB, ×2 at the 512 KiB cap), `every` the largest of the 16 (up to ×4 for an
-intermediate proof at 1 MiB); 1 KiB is about 0.135 % of the score, and 10 % less prover time is
-worth about 78 KiB. A pass that does not finish is a REJECT: there is no median over the passes
-that finished. How the work is spread over the steps is free, but hashing cannot be deferred (a
+entry's reasons. `V` is capped, not scored. Each track prices its own proofs by their size in bytes:
+`final` the final proof, `every` the largest of the 16. The score is a plain product, so prover
+time and proof size weigh alike: 1 % off the priced proof is worth 1 % off the prover time, halving
+the proof halves the score, and a size cut alone beats the 2 % record margin once it is more than
+2 % (a 2.2 s prover with a 280,000-byte final proof scores 616,000 s·B). A pass that does not
+finish is a REJECT: there is no median over the passes that finished. How the work is spread over the steps is free, but hashing cannot be deferred (a
 step's data exceeds the 1 MiB output cap); recursion can, and in `final` a last compression of the
 final proof pays.
 
@@ -402,7 +403,7 @@ first record at a pin too: with no record standing in a track, the candidate tak
 confirmation. The candidate takes the record of a track only if the confirmation run is also a
 comparable, attested ACCEPT that beats that track's standing record by the margin, and the record
 keeps the **worse** (larger) of the two runs in each track, with all of that track's parts (P_total,
-the passes, the size factor and proof size) from that run: when the two tracks keep different runs,
+the passes and the priced proof's size) from that run: when the two tracks keep different runs,
 `score.by_track` holds the other track's parts. Otherwise the entry is `accepted` if the
 confirmation is an ACCEPT that ranks, else it takes the confirmation's status (a REJECT makes it
 `rejected`), and the comment says why. The entry's run link and `result` are those of the run its

@@ -39,7 +39,7 @@
       blocks in <code>leaf.bin</code>; about 2<sup>19</sup> hashes), folded into the running proof.
       After a service run, the stream is timed in three passes that must reproduce its outputs byte
       for byte; <i>P</i><sub>total</sub> is the median of the three passes' totals. The score is
-      <i>P</i><sub>total</sub> times a size factor, and it ranks two tracks:
+      <i>P</i><sub>total</sub> times a proof's size in bytes, and it ranks two tracks:
       <strong>final</strong>, where only the final proof is verified and its size is priced, and
       <strong>every</strong>, where every proof is verified and the largest one's size is priced.
       <a data-page="rules.html#score" href="rules.html#score">Read the rules</a>.</p>
@@ -55,7 +55,7 @@
       <button type="button" role="tab" class="track-tab" id="tab-final" data-track="final" aria-controls="track-panel" aria-selected="true" tabindex="0">Final <span class="tab-formula">only the final proof verified</span></button>
       <button type="button" role="tab" class="track-tab" id="tab-every" data-track="every" aria-controls="track-panel" aria-selected="false" tabindex="-1">Every <span class="tab-formula">every proof verified</span></button>
     </div>
-    <p class="track-blurb" id="track-blurb">Each track has its own record and leaderboard, from the same evaluations, with its own score: S = P<sub>total</sub> &middot; 2^(|&pi;<sub>16</sub>| / 512 KiB) in final, S<sub>every</sub> = P<sub>total</sub> &middot; 2^(max |&pi;<sub>i</sub>| / 512 KiB) in every.</p>
+    <p class="track-blurb" id="track-blurb">Each track has its own record and leaderboard, from the same evaluations, with its own score: S = P<sub>total</sub> &middot; |&pi;<sub>16</sub>| in final, S<sub>every</sub> = P<sub>total</sub> &middot; max |&pi;<sub>i</sub>| in every, the proof sizes in bytes.</p>
   </div>
 
   <div id="track-panel" role="tabpanel" aria-labelledby="tab-final" tabindex="0">
@@ -66,7 +66,7 @@
   <section class="section" aria-labelledby="progress-title">
     <div class="section-head">
       <h2 id="progress-title">Record progression</h2>
-      <p id="progress-note">The track's score over time, in seconds; lower is better. Records are kept per contract pin.</p>
+      <p id="progress-note">The track's score over time, in seconds &middot; bytes (s&middot;B); lower is better. Records are kept per contract pin.</p>
     </div>
     <div class="chart-box" id="chart"></div>
   </section>
@@ -81,7 +81,7 @@
         <caption class="visually-hidden" id="leaders-caption">Every record of the track, newest first, grouped by contract pin</caption>
         <thead id="leaders-head"><tr>
           <th scope="col" class="num">#</th><th scope="col">Entry</th><th scope="col">Author</th>
-          <th scope="col" class="num">Score (s)</th><th scope="col" class="num">Gain</th><th scope="col">Date</th>
+          <th scope="col" class="num">Score (s&middot;B)</th><th scope="col" class="num">Gain</th><th scope="col">Date</th>
         </tr></thead>
         <tbody id="leaders"><tr class="empty-row"><td colspan="6">Loading&hellip;</td></tr></tbody>
       </table>
@@ -119,8 +119,8 @@
         <caption class="visually-hidden">All submissions, newest first</caption>
         <thead><tr>
           <th scope="col">Status</th><th scope="col">Entry</th><th scope="col" class="num">PR</th>
-          <th scope="col">Author</th><th scope="col">Agent</th><th scope="col" class="num"><abbr title="the score S in the final track, seconds">Final (s)</abbr></th>
-          <th scope="col" class="num"><abbr title="the score S_every in the every track, seconds">Every (s)</abbr></th>
+          <th scope="col">Author</th><th scope="col">Agent</th><th scope="col" class="num"><abbr title="the score S in the final track, seconds times bytes">Final (s&middot;B)</abbr></th>
+          <th scope="col" class="num"><abbr title="the score S_every in the every track, seconds times bytes">Every (s&middot;B)</abbr></th>
           <th scope="col">Date</th><th scope="col">Credit</th>
         </tr></thead>
         <tbody id="subs"><tr class="empty-row"><td colspan="9">Loading&hellip;</td></tr></tbody>
