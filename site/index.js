@@ -11,7 +11,7 @@
     if (!a || !e.record_of[tr.id]) return e.port_of ? 'none (the record re-run at a new pin)' : 'none (no record stood in this track at its pin)';
     const prev = data.subs.find(x => x.id === a.record);
     const name = el('a', { href: page('submission.html', { id: a.record }) }, prev ? nm(prev) : a.record);
-    return [pct(gainOf(e, tr.id)), ' against ', name, a.S_record !== null ? ` (${fmtS(a.S_record)} ${unitOf(e, tr)})` : ''];
+    return [pct(gainOf(e, tr.id)), ' against ', name, a.S_record !== null ? ` (${fmtS(a.S_record, unitOf(e, tr))} ${unitOf(e, tr)})` : ''];
   }
   const short = sha => sha ? sha.slice(0, 7) : 'unknown';
   // the unit of an entry's score in a track, by how its result is priced (this season: s\u00b7B)
@@ -80,7 +80,7 @@
     const other = window.RF.TRACKS.filter(t => t.id !== tr.id && data.record[t.id] && data.record[t.id].id === cur.id);
     const left = el('div', null,
       el('h2', null, `Current ${tr.label.toLowerCase()} record`),
-      el('p', { class: 'score-big' }, el('span', { class: 'math' }, pt.sym), fmtS(scoreIn(cur, tr.id)), el('span', { class: 'unit' }, window.RF.unitNode(pt.unit))),
+      el('p', { class: 'score-big' }, el('span', { class: 'math' }, pt.sym), fmtS(scoreIn(cur, tr.id), pt.unit), el('span', { class: 'unit' }, window.RF.unitNode(pt.unit))),
       el('p', { class: 'score-split' }, '=', split),
       el('p', { class: 'score-note' }, pt.note),
       other.length ? el('p', { class: 'score-note' }, 'It also holds the ' + other.map(t => t.label.toLowerCase()).join(' and ') + ' record.') : null);
@@ -102,27 +102,36 @@
     const raw = span / n, p = 10 ** Math.floor(Math.log10(raw)), f = raw / p;
     return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
   }
-  // a tick of the score axis: millions of s\u00b7B as `4.38M`, seconds as they are
-  const tickText = v => v >= 1e5 && v < 1e12 ? +(v / 1e6).toFixed(3) + 'M' : v >= 1 && v < 1e5 || v === 0 ? String(+v.toFixed(2)) : v.toExponential(0);
+  // a tick of the score axis, in the track's unit (s\u00b7B: an integer with separators)
+  const tickText = (v, u) => v >= 1 || v === 0 ? fmtS(v, u) : v.toExponential(0);
   function chart(recs, tr, data, nm) {
     const box = document.getElementById('chart');
     const S = e => scoreIn(e, tr.id);
+    // one axis, one unit: only results priced like this track (s\u00b7B); an earlier v6 season's
+    // (seconds, its exponential factor) stay out of the chart, in the tables with their own unit
+    const priced = e => !window.RF.pricedBy(tr, window.RF.partsIn(e.score, tr.id)).old;
     // comparable, attested ACCEPTs that are not a record of this track
     const others = data.subs.filter(e => ['accepted', 'record', 'retired'].includes(e.status) && !e.record_in.includes(tr.id)
-      && e.verified && e.comparable && S(e) !== null && evaluatedAt(e));
+      && e.verified && e.comparable && S(e) !== null && evaluatedAt(e) && priced(e));
     const W = Math.max(280, box.clientWidth - 16), H = W < 560 ? 240 : 300;
     const m = { l: 50, r: W < 560 ? 52 : 70, t: 18, b: 30 };
-    const pos = recs;
+    const pos = recs.filter(priced), earlier = recs.length - pos.length;
+    const u = tr.unit;
     const s = svg('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': pos.length
-      ? `${tr.label} record score over time: ${pos.length} records, from ${fmtS(S(pos[0]))} ${unitOf(pos[0], tr)} to ${fmtS(S(pos[pos.length - 1]))} ${unitOf(pos[pos.length - 1], tr)}`
-      : `No ${tr.label.toLowerCase()} records yet` });
+      ? `${tr.label} record score over time: ${pos.length} records, from ${fmtS(S(pos[0]), u)} ${u} to ${fmtS(S(pos[pos.length - 1]), u)} ${u}`
+      : earlier ? `No ${tr.label.toLowerCase()} records at this season's rule yet` : `No ${tr.label.toLowerCase()} records yet` });
     const tip = el('div', { class: 'tooltip', hidden: true, role: 'status' });
     box.replaceChildren();
+    const note = earlier ? el('div', { class: 'legend' }, el('span', { class: 'muted' }, earlier === 1
+      ? `One earlier record, priced by an earlier season's rule (in seconds), is not charted; the leaderboard lists it.`
+      : `${earlier} earlier records, priced by an earlier season's rule (in seconds), are not charted; the leaderboard lists them.`)) : null;
     if (!pos.length) {
       for (let i = 0; i < 5; i++) s.append(svg('line', { class: 'grid', x1: m.l, x2: W - m.r, y1: m.t + i * (H - m.t - m.b) / 4, y2: m.t + i * (H - m.t - m.b) / 4 }));
       s.append(svg('line', { class: 'axis', x1: m.l, x2: W - m.r, y1: H - m.b, y2: H - m.b }));
-      s.append(svg('text', { class: 'empty-msg', x: (m.l + W - m.r) / 2, y: (H - m.b + m.t) / 2, 'text-anchor': 'middle' }, 'The first record of this track will start this line.'));
+      s.append(svg('text', { class: 'empty-msg', x: (m.l + W - m.r) / 2, y: (H - m.b + m.t) / 2, 'text-anchor': 'middle' },
+        earlier ? 'The first record at this season\'s rule will start this line.' : 'The first record of this track will start this line.'));
       box.append(s);
+      if (note) box.append(note);
       return;
     }
     const pts = [...pos, ...others.slice(-2000)];
@@ -143,6 +152,7 @@
       yticks = [];
       for (let v = 0; v <= hi + 1e-9; v += step) yticks.push(v);
     }
+    m.l = Math.max(m.l, 14 + 7 * Math.max(...yticks.map(v => tickText(v, u).length)));   // the widest tick fits
     const t = e => evaluatedAt(e).getTime();
     const end = Math.max(...pts.map(t), data.updated ? data.updated.getTime() : 0);
     let t0 = Math.min(...pts.map(t)), t1 = end;
@@ -152,7 +162,7 @@
     const x = v => m.l + (v - t0) / (t1 - t0) * (W - m.l - m.r);
     for (const v of yticks) {
       s.append(svg('line', { class: 'grid', x1: m.l, x2: W - m.r, y1: y(v), y2: y(v) }));
-      s.append(svg('text', { class: 'tick', x: m.l - 8, y: y(v) + 4, 'text-anchor': 'end' }, tickText(v)));
+      s.append(svg('text', { class: 'tick', x: m.l - 8, y: y(v) + 4, 'text-anchor': 'end' }, tickText(v, u)));
     }
     s.append(svg('line', { class: 'axis', x1: m.l, x2: W - m.r, y1: H - m.b, y2: H - m.b }));
     const days = (t1 - t0) / 86400e3;
@@ -176,7 +186,7 @@
     if (cur) s.append(svg('path', { class: 'step-tail', d: `M${x(t(cur)).toFixed(1)} ${y(S(cur)).toFixed(1)}H${x(end).toFixed(1)}` }));
     const word = e => e.record_in.includes(tr.id) ? (retiredIn(e, tr.id) ? 'retired record' : 'record') : 'accepted';
     const showTip = (e, px, py) => {
-      tip.replaceChildren(el('strong', null, nm(e)), `${tr.sym} = ${fmtS(S(e))} ${unitOf(e, tr)}`, el('br'),
+      tip.replaceChildren(el('strong', null, nm(e)), `${tr.sym} = ${fmtS(S(e), u)} ${u}`, el('br'),
         fmtDate(evaluatedAt(e)) + ', ' + word(e) + (e.author ? ', ' + e.author : ''));
       tip.hidden = false;
       const bw = box.clientWidth;
@@ -186,7 +196,7 @@
     const hide = () => { tip.hidden = true; };
     const point = (e, cls, r) => {
       const px = x(t(e)), py = y(S(e));
-      const a = svg('a', { href: page('submission.html', { id: e.id }), 'aria-label': `${nm(e)}: ${tr.sym} ${fmtS(S(e))} ${unitOf(e, tr)}, ${fmtDate(evaluatedAt(e))}, ${word(e)}` },
+      const a = svg('a', { href: page('submission.html', { id: e.id }), 'aria-label': `${nm(e)}: ${tr.sym} ${fmtS(S(e), u)} ${u}, ${fmtDate(evaluatedAt(e))}, ${word(e)}` },
         svg('circle', { class: 'hit', cx: px, cy: py, r: 12 }),
         svg('circle', { class: cls, cx: px, cy: py, r }));
       const scale = () => s.getBoundingClientRect().width / W;
@@ -199,13 +209,14 @@
     for (const e of others.slice(-2000)) point(e, 'pt-other', 3.6);
     for (const e of pos) point(e, retiredIn(e, tr.id) ? 'pt-retired' : 'pt-record', 5);
     const lab = cur || pos[pos.length - 1];
-    s.append(svg('text', { class: 'direct', x: x(t(lab)) + 9, y: y(S(lab)) - 9 }, fmtS(S(lab)) + ' ' + unitOf(lab, tr)));
+    s.append(svg('text', { class: 'direct', x: x(t(lab)) + 9, y: y(S(lab)) - 9 }, fmtS(S(lab), u) + ' ' + u));
     box.append(s);
     const hasRetired = pos.some(e => retiredIn(e, tr.id));
     if (others.length || hasRetired) box.append(el('div', { class: 'legend' }, el('span', { class: 'lg-record' }, 'Record'),
       hasRetired ? el('span', { class: 'lg-retired' }, 'Retired record') : null,
       others.length ? el('span', { class: 'lg-other' }, 'Accepted, not a record of this track') : null));
     if (log) box.append(el('div', { class: 'legend' }, el('span', { class: 'muted' }, 'Logarithmic scale.')));
+    if (note) box.append(note);
     box.append(tip);
   }
 
@@ -252,10 +263,10 @@
         el('td', null, el('a', { class: 'entry', href: page('submission.html', { id: e.id }) }, nm(e)),
           isCur ? [' ', el('span', { class: 'badge st-record' }, 'current')] : retiredIn(e, tr.id) ? [' ', badge('retired')] : null),
         el('td', null, e.author ? ext(link.author(e), e.author) : '–'),
-        el('td', { class: 'num' }, el('strong', null, fmtS(scoreIn(e, tr.id))), oneUnit ? null : [' ', el('small', null, window.RF.unitNode(unitOf(e, tr)))]),
+        el('td', { class: 'num' }, el('strong', null, fmtS(scoreIn(e, tr.id), unitOf(e, tr))), oneUnit ? null : [' ', el('small', null, window.RF.unitNode(unitOf(e, tr)))]),
         el('td', { class: 'num' }, fmtPart(sc.P_total_s, 's')),
         el('td', { class: 'num', title: mixed ? rowDef.size[1] : null }, fmtPart(sc[rowDef.size[0]], rowDef.old ? 'bytes' : 'B')),
-        el('td', { class: 'num' + (gain !== null && e.record_of[tr.id] ? ' gain' : ''), title: gain !== null && a.S_record !== null ? `Against the ${fmtS(a.S_record)} ${unitOf(e, tr)} of the record it beat` : null },
+        el('td', { class: 'num' + (gain !== null && e.record_of[tr.id] ? ' gain' : ''), title: gain !== null && a.S_record !== null ? `Against the ${fmtS(a.S_record, unitOf(e, tr))} ${unitOf(e, tr)} of the record it beat` : null },
           gain !== null && e.record_of[tr.id] ? pct(gain) : e.port_of ? 'ported' : 'first at pin'),
         el('td', null, timeEl(evaluatedAt(e)))));
     }
@@ -361,7 +372,7 @@
         el('td', null, e.author ? ext(link.author(e), e.author) : '–'),
         el('td', null, el('span', { class: 'agent' }, e.agent || '–')),
         // (an earlier season's score, in another unit than the header's, carries its own)
-        window.RF.TRACK_IDS.map(t => el('td', { class: 'num' }, scoreIn(e, t) !== null ? fmtS(scoreIn(e, t)) : '–',
+        window.RF.TRACK_IDS.map(t => el('td', { class: 'num' }, scoreIn(e, t) !== null ? fmtS(scoreIn(e, t), unitOf(e, trackOf(t))) : '–',
           scoreIn(e, t) !== null && unitOf(e, trackOf(t)) !== trackOf(t).unit ? [' ', el('small', null, unitOf(e, trackOf(t)))] : null,
           e.record_in.includes(t) ? el('span', { class: 'rec-mark', title: retiredIn(e, t) ? 'took this track\'s record (retired since)' : 'took this track\'s record' }, retiredIn(e, t) ? ' \u2020' : ' \u2605') : null)),
         el('td', null, timeEl(e.finished || e.queued || e.opened)),

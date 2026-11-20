@@ -181,3 +181,12 @@ def unit_text(score, ascii=False):
     """The unit of a result's scores: seconds times bytes at this season's rule (`s·B`, `s*B` in
     ASCII), seconds for an earlier season's (an exponential factor, or none)."""
     return ("s*B" if ascii else "s·B") if product_rule(score) else "s"
+
+
+def score_text(v, score):
+    """A score `v` as text in the unit of its result's `score`: a whole number of s·B at this
+    season's rule (`4358812`: a fraction of a second-byte says nothing, and statuses stay short),
+    four decimals of seconds at an earlier season's (`1.2346`); `-` when it is not a number."""
+    if not is_num(v):
+        return "-"
+    return f"{v:.0f}" if product_rule(score) else f"{v:.4f}"

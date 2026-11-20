@@ -48,7 +48,7 @@
    "reasons": [
     "final: no record stood in this track at the pin",
     "every: no record stood in this track at the pin",
-    "confirmed: the confirmation run also takes the record of final, every (final: 2288730.0000 s*B, then 2281410.0000 s*B; every: 2899058.0000 s*B, then 2889786.0000 s*B); the record keeps the worse run in each track"
+    "confirmed: the confirmation run also takes the record of final, every (final: 2288730 s*B, then 2281410 s*B; every: 2899058 s*B, then 2889786 s*B); the record keeps the worse run in each track"
    ],
    "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/101",
    "tag": "rf-source/pr3-5d84396bc69e",
@@ -213,9 +213,9 @@
    "comparable": true,
    "truncated": false,
    "reasons": [
-    "final: 940680.0000 s*B beats the record pr3-5d84396bc69e-c0dec0de (2310120.0000 s*B) by 59.3%",
-    "every: 1230120.0000 s*B beats the record pr3-5d84396bc69e-c0dec0de (2926152.0000 s*B) by 58.0%",
-    "confirmed: the confirmation run also takes the record of final, every (final: 940680.0000 s*B, then 937664.0000 s*B; every: 1230120.0000 s*B, then 1226176.0000 s*B); the record keeps the worse run in each track"
+    "final: 940680 s*B beats the record pr3-5d84396bc69e-c0dec0de (2310120 s*B) by 59.3%",
+    "every: 1230120 s*B beats the record pr3-5d84396bc69e-c0dec0de (2926152 s*B) by 58.0%",
+    "confirmed: the confirmation run also takes the record of final, every (final: 940680 s*B, then 937664 s*B; every: 1230120 s*B, then 1226176 s*B); the record keeps the worse run in each track"
    ],
    "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/104",
    "tag": "rf-source/pr5-b08f59d2dfd5",
@@ -490,8 +490,8 @@
    "truncated": false,
    "reasons": [
     "not scored in every: output 2 rejected by acc",
-    "final: 882648.0000 s*B beats the record pr5-b08f59d2dfd5 (940680.0000 s*B) by 6.2%",
-    "confirmed: the confirmation run also takes the record of final (final: 882648.0000 s*B, then 879842.0000 s*B); the record keeps the worse run in each track"
+    "final: 882648 s*B beats the record pr5-b08f59d2dfd5 (940680 s*B) by 6.2%",
+    "confirmed: the confirmation run also takes the record of final (final: 882648 s*B, then 879842 s*B); the record keeps the worse run in each track"
    ],
    "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/106",
    "tag": "rf-source/pr7-acd08d0c260f",
@@ -617,9 +617,9 @@
    "comparable": true,
    "truncated": false,
    "reasons": [
-    "final: 625268.0000 s*B beats the record pr7-acd08d0c260f (882648.0000 s*B) by 29.2%",
-    "every: 803916.0000 s*B beats the record pr5-b08f59d2dfd5 (1230120.0000 s*B) by 34.6%",
-    "confirmed: the confirmation run also takes the record of final, every (final: 625268.0000 s*B, then 623280.0000 s*B; every: 803916.0000 s*B, then 801360.0000 s*B); the record keeps the worse run in each track"
+    "final: 625268 s*B beats the record pr7-acd08d0c260f (882648 s*B) by 29.2%",
+    "every: 803916 s*B beats the record pr5-b08f59d2dfd5 (1230120 s*B) by 34.6%",
+    "confirmed: the confirmation run also takes the record of final, every (final: 625268 s*B, then 623280 s*B; every: 803916 s*B, then 801360 s*B); the record keeps the worse run in each track"
    ],
    "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/107",
    "tag": "rf-source/pr8-f87ede97e4c7",
@@ -946,9 +946,9 @@
    "comparable": true,
    "truncated": false,
    "reasons": [
-    "final: 594324.0000 s*B beats the record pr8-f87ede97e4c7 (625268.0000 s*B) by 4.9%",
-    "every: 776505.6000 s*B beats the record pr8-f87ede97e4c7 (803916.0000 s*B) by 3.4%",
-    "confirmed: the confirmation run also takes the record of final, every (final: 594324.0000 s*B, then 593798.4000 s*B; every: 770420.0000 s*B, then 776505.6000 s*B); the record keeps the worse run in each track",
+    "final: 594324 s*B beats the record pr8-f87ede97e4c7 (625268 s*B) by 4.9%",
+    "every: 776506 s*B beats the record pr8-f87ede97e4c7 (803916 s*B) by 3.4%",
+    "confirmed: the confirmation run also takes the record of final, every (final: 594324 s*B, then 593798 s*B; every: 770420 s*B, then 776506 s*B); the record keeps the worse run in each track",
     "retired by the owner (final)"
    ],
    "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/111",
@@ -1288,8 +1288,8 @@
    "truncated": false,
    "reasons": [
     "not scored in every: output 2 rejected by acc",
-    "final: 541968.0000 s*B beats the record pr8-f87ede97e4c7 (625268.0000 s*B) by 13.3%",
-    "confirmed: the confirmation run also takes the record of final (final: 540360.0000 s*B, then 541968.0000 s*B); the record keeps the worse run in each track"
+    "final: 541968 s*B beats the record pr8-f87ede97e4c7 (625268 s*B) by 13.3%",
+    "confirmed: the confirmation run also takes the record of final (final: 540360 s*B, then 541968 s*B); the record keeps the worse run in each track"
    ],
    "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/126",
    "tag": "rf-source/pr18-ab84b4f3b9cc",

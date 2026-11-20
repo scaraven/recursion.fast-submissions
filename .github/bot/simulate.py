@@ -19,6 +19,10 @@ import rfqueue  # noqa: E402
 
 REPO = "scaraven/recursion.fast-submissions"
 PIN = "c0dec0dec0dec0dec0dec0dec0dec0dec0dec0de"   # fictional
+# The unit of `make_result`'s `S`: 2^20 s·B, so S = 10.0 is a realistic score, 10,485,760 s·B
+# (P_total 37.4 s times a 280,000-byte final proof). A power of two, so scaling is exact: every
+# comparison, gain and decision is the unscaled numbers' own.
+MS = 1 << 20
 GENV = {"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
         "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t", "GIT_AUTHOR_DATE": "2026-11-03T00:00:00Z",
         "GIT_COMMITTER_DATE": "2026-11-03T00:00:00Z"}
@@ -145,12 +149,12 @@ def make_result(run_id, verdict="ACCEPT", S=1.0, comparable=True, harness=PIN, p
     """A result as the core's aggregate.py writes it (the fields the bot reads). `comparable=False`:
     a truncated stream; `machine_ok=False`: another machine's fingerprint, the organiser's ERROR;
     `stream=False`: no stream recorded (a REJECT at the certificate, so no benchmark part, or inside
-    the stream). `S` is the score of `final` (P_total · |π_16|, |π_16| in bytes, so in seconds ·
-    bytes); `S_every`, the score of `every`, prices the largest proof (an intermediate one 80,000
+    the stream). `S` is the score of `final` in units of `MS` (2^20 s·B: P_total · |π_16|, |π_16|
+    in bytes, so in seconds · bytes; S = 7.0 to 10.0 is P_total 26 s to 37 s); `S_every`, the score of `every`, prices the largest proof (an intermediate one 80,000
     bytes larger than the final one), so it is `S` times a fixed factor, 360000 / 280000, and the
     two tracks rank alike; `every=False`: eligible for
     `final` only (an intermediate output not accepted), with the core's `tracks_reason`; `legacy`: a
-    score without `tracks` (an earlier season's core), the sum alone; `reject_stage`: a REJECT's
+    score without `tracks` (an earlier season's core), the sum alone, `S` in seconds as given; `reject_stage`: a REJECT's
     stage, the core's top-level field (absent by default; with a stream, the stream's `leaf_data`
     marks the result as this rules' core's, so a REJECT without a stage is final)."""
     fp = "f" * 64
@@ -172,6 +176,8 @@ def make_result(run_id, verdict="ACCEPT", S=1.0, comparable=True, harness=PIN, p
     if verdict in ("ACCEPT", "PROVISIONAL"):
         pi, pi_max = 280000, 360000
         f, fe = pi, pi_max
+        if not legacy:
+            S = S * MS
         P = S / f
         if legacy:
             r["score"] = {"S": S, "P_bar": S * 0.8, "V_bar": S * 0.2, "M": 96, "c_P": 1.0}

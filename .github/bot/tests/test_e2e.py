@@ -11,7 +11,7 @@ import gitdata
 import render
 import common
 import rfqueue
-from simulate import PIN, REPO, World, commit_tree, git, good_root, make_result
+from simulate import MS, PIN, REPO, World, commit_tree, git, good_root, make_result
 
 
 class E2E(unittest.TestCase):
@@ -240,7 +240,7 @@ class E2E(unittest.TestCase):
         self.w.intake(2)
         _, b = self.w.evaluate(lambda e, run: make_result(run, S=9.0, every=False, prover="2" * 64))
         self.assertEqual((b["status"], b["record_in"], b["record_of"]), ("record", ["final"], {"final": a["id"], "every": None}))
-        self.assertEqual(self.head_status(2)["description"], "ACCEPT: new record (final), S = 9.0000 s*B (final)")
+        self.assertEqual(self.head_status(2)["description"], "ACCEPT: new record (final), S = 9437184 s*B (final)")
         self.assertIn("not scored in every: output 3 rejected by acc", b["reasons"])
         self.assertTrue(any("Tracks: final (not every" in c[1] for c in self.g.comments))
         st = json.loads(self.w.show("data:submissions.json"))
@@ -421,18 +421,18 @@ class E2E(unittest.TestCase):
         e, p = self.w.evaluate(self.win(S=8.6))                               # the confirmation runs next
         self.assertEqual((e["pr"], e["sha"], p["status"], p["record_in"]), (2, sha0, "record", ["final", "every"]))
         self.assertEqual((common.track_scores(p["score"])["final"], p["record_of"]["final"], p["counted_at"]),
-                         (8.6, rec["id"], counted))
-        self.assertAlmostEqual(common.track_scores(p["score"])["every"], 8.6 * 360000 / 280000)   # S_every: the largest proof
+                         (8.6 * MS, rec["id"], counted))
+        self.assertAlmostEqual(common.track_scores(p["score"])["every"], 8.6 * MS * 360000 / 280000)   # S_every: the largest proof
         self.assertTrue(any(x.startswith("confirmed:") for x in p["reasons"]))
         # the record's score is the confirmation's (the worse run): its run link and result JSON too
         self.assertEqual((p["confirmation"]["status"], p["result"], p["confirmation"]["result"], p["confirmation"]["score_run"]),
                          ("record", f"results/{p['id']}-confirm.json", f"results/{p['id']}-confirm.json", "confirmation"))
         self.assertEqual((p["run_url"], json.loads(self.w.show(f"data:{p['result']}"))["score"]["S"]),
-                         (p["confirmation"]["run"], 8.6))
+                         (p["confirmation"]["run"], 8.6 * MS))
         self.assertIsNotNone(self.w.show(f"data:results/{p['id']}-confirm.json"))
         self.assertNotIn("confirm", p)
         r = json.loads(self.w.show("main:records.json"))
-        self.assertEqual((r["record"]["final"]["id"], r["record"]["final"]["score"]["S"]), (p["id"], 8.6))
+        self.assertEqual((r["record"]["final"]["id"], r["record"]["final"]["score"]["S"]), (p["id"], 8.6 * MS))
         self.assertEqual([x["status"] for x in self.w.state()["submissions"] if x["pr"] == 2], ["record", "queued"])
         e, _ = self.w.evaluate(lambda e, run: make_result(run, "REJECT", harness=self.w.pin))
         self.assertEqual(e["pr"], 3)                                          # then the fair order
@@ -446,7 +446,7 @@ class E2E(unittest.TestCase):
         self.w.intake(2)
         e, p = self.w.evaluate(self.win(S=9.0), again=self.win(S=9.9))
         self.assertEqual((e["pr"], p["status"], p["record_in"], p["record_of"]["final"]), (2, "accepted", [], None))
-        self.assertEqual(common.track_scores(p["score"])["final"], 9.9)          # the worse run
+        self.assertEqual(common.track_scores(p["score"])["final"], 9.9 * MS)          # the worse run
         self.assertTrue(any("did not confirm it: it does not beat the standing record" in x for x in p["reasons"]))
         self.assertTrue(any("did not confirm it" in c[1] for c in self.g.comments))
         self.assertEqual(json.loads(self.w.show("main:records.json"))["record"]["final"]["id"], rec["id"])
@@ -481,7 +481,7 @@ class E2E(unittest.TestCase):
         self.assertIn("confirmation waiting on the organiser", self.head_status(2)["description"])
         self.assertEqual(json.loads(self.w.show("main:records.json"))["record"]["final"]["id"], rec["id"])
         e, p = self.w.evaluate(self.win(S=8.4), force=2)                                # the owner's forced run
-        self.assertEqual((e["pr"], p["status"], common.track_scores(p["score"])["final"]), (2, "record", 8.4))
+        self.assertEqual((e["pr"], p["status"], common.track_scores(p["score"])["final"]), (2, "record", 8.4 * MS))
 
     def test_machine_mismatch_is_an_organiser_error_that_keeps_its_place(self):
         """Another machine's fingerprint is the organiser's ERROR: re-queued in its place

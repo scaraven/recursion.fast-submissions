@@ -1,11 +1,14 @@
 import json
+import os
 import re
+import shutil
 import subprocess
 import unittest
 
 import tests  # noqa: F401  (puts the bot on sys.path)
 import attest
 import common
+import decide as decide_mod
 import pin
 import render
 import rfqueue
@@ -603,23 +606,26 @@ class Decide(unittest.TestCase):
         self.assertEqual(c["status"], "accepted")
         self.assertIsNone(confirmed(first, decide(R("ERROR"), OK, PIN, self.recs, 1)))             # retried, still pending
         self.assertIsNone(confirmed(first, decide(R(), {"attested": False}, PIN, self.recs, 1)))
-        # S and S_every order the two runs differently: each track keeps its own worse run
-        first = candidate(decide(V6(S=9.0, S_every=9.4), OK, PIN, self.recs, 1), PIN, "https://run/1")
-        c = confirmed(first, decide(V6(S=9.1, S_every=9.3), OK, PIN, self.recs, 1))
+        # S and S_every order the two runs differently: each track keeps its own worse run (scores
+        # in s·B at this season's scale, against a record of 10^7 s·B)
+        big = dict(self.rec, score=V6(S=10.0e6)["score"])
+        big = {"final": big, "every": big}
+        first = candidate(decide(V6(S=9.0e6, S_every=9.4e6), OK, PIN, big, 1), PIN, "https://run/1")
+        c = confirmed(first, decide(V6(S=9.1e6, S_every=9.3e6), OK, PIN, big, 1))
         self.assertEqual((c["status"], c["took"], common.track_scores(c["score"])),
-                         ("record", ["final", "every"], {"final": 9.1, "every": 9.4}))
-        self.assertEqual((c["against"]["final"]["S"], c["against"]["every"]["S"]), (9.1, 9.4))
+                         ("record", ["final", "every"], {"final": 9.1e6, "every": 9.4e6}))
+        self.assertEqual((c["against"]["final"]["S"], c["against"]["every"]["S"]), (9.1e6, 9.4e6))
         self.assertEqual(c["score"]["tracks"], {"final": "S", "every": "S_every"})
         # every part shown with a track's score is of the run that gave it: the score object is the
         # lead track's (final) worse run, whole; every's fields are the first run's, in by_track
-        self.assertEqual((c["score_run"], c["score"]["P_total_s"], c["score"]["S"]), ("confirmation", 9.1 / F6, 9.1))
+        self.assertEqual((c["score_run"], c["score"]["P_total_s"], c["score"]["S"]), ("confirmation", 9.1e6 / F6, 9.1e6))
         self.assertEqual(set(c["score"]["by_track"]), {"every"})
         bt = c["score"]["by_track"]["every"]
-        self.assertEqual((bt["S_every"], bt["P_total_s"], c["score"]["S_every"]), (9.4, 9.0 / F6, 9.4))
+        self.assertEqual((bt["S_every"], bt["P_total_s"], c["score"]["S_every"]), (9.4e6, 9.0e6 / F6, 9.4e6))
         self.assertNotIn("tracks", bt)
-        c2 = confirmed(first, decide(V6(S=9.2, S_every=9.5), OK, PIN, self.recs, 1))     # one run worse in both
-        self.assertEqual((c2["score_run"], "by_track" in c2["score"], c2["score"]["S_every"]), ("confirmation", False, 9.5))
-        self.assertIn("final: 9.0000 s*B, then 9.1000 s*B; every: 9.4000 s*B, then 9.3000 s*B", c["reasons"][0])
+        c2 = confirmed(first, decide(V6(S=9.2e6, S_every=9.5e6), OK, PIN, big, 1))     # one run worse in both
+        self.assertEqual((c2["score_run"], "by_track" in c2["score"], c2["score"]["S_every"]), ("confirmation", False, 9.5e6))
+        self.assertIn("final: 9000000 s*B, then 9100000 s*B; every: 9400000 s*B, then 9300000 s*B", c["reasons"][0])
         none = candidate(decide(R(S=50.0), OK, PIN, {}, 1), PIN, "u")                     # no record stood: any ACCEPT confirms
         self.assertEqual(confirmed(none, decide(R(S=60.0), OK, PIN, {}, 1))["status"], "record")
 
@@ -686,14 +692,45 @@ class Render(unittest.TestCase):
         e = {"status": "record", "verdict": "ACCEPT", "record_in": ["final", "every"],      # this season's rule
              "score": {"S": 4358812.471, "S_every": 5173251.074, "P_total_s": 15.592, "size_factor": 279552,
                        "final_pi_bytes": 279552, "tracks": {"final": "S", "every": "S_every"}}}
-        self.assertEqual(render.status_for(e), ("success", "ACCEPT: new record (final, every), S = 4358812.4710 s*B "
-                                                "(final), S_every = 5173251.0740 s*B (every)"))
+        self.assertEqual(render.status_for(e), ("success", "ACCEPT: new record (final, every), S = 4358812 s*B "
+                                                "(final), S_every = 5173251 s*B (every)"))
         e["score"]["size_ref"] = 524288                                     # an earlier v6 season's exponential factor
         self.assertIn("S = 4358812.4710 s (final)", render.status_for(e)[1])
+        e = {"status": "accepted", "verdict": "ACCEPT", "score": {"S": 1.2346, "tracks": {"final": "S", "every": "S"}}}
+        self.assertEqual(render.status_for(e)[1], "ACCEPT: accepted (did not beat the record), S = 1.2346 s (final, every)")
         e = {"status": "accepted", "verdict": "ACCEPT", "score": {"S": 2.0}}     # an earlier season's result
         self.assertEqual(render.status_for(e)[1], "ACCEPT: accepted (did not beat the record), S = 2.0000 s (sum)")
         self.assertLessEqual(len(render.status_for({"status": "x" * 500})[1]), 140)
 
+    def test_status_fits_at_large_scores(self):
+        """At S = 1.1e9 s·B (a slow prover with a large proof) every status with scores keeps its
+        whole text within GitHub's 140 characters: nothing is cut."""
+        sc = {"S": 1.1e9, "S_every": 1.34e9, "P_total_s": 2200.0, "size_factor": 500000, "final_pi_bytes": 500000,
+              "max_pi_bytes": 609090, "size_factor_every": 609090, "tracks": {"final": "S", "every": "S_every"}}
+        cases = [{"status": "record", "verdict": "ACCEPT", "record_in": ["final", "every"], "score": sc}]
+        cases += [{"status": st, "verdict": "ACCEPT", "score": sc} for st in ("accepted", "unranked")]
+        cases += [{"status": "provisional", "verdict": "PROVISIONAL", "score": sc}]
+        cases += [{"status": st, "verdict": "ACCEPT", "score": None, "confirm": {"took": ["final", "every"], "score": sc}}
+                  for st in ("queued", "running", "error")]
+        for e in cases:
+            d = render.status_for(e)[1]
+            self.assertLessEqual(len(d), 140, d)
+            self.assertTrue(d.endswith("S = 1100000000 s*B (final), S_every = 1340000000 s*B (every)"), d)
+        self.assertEqual(render.status_for(cases[-1])[1], "record candidate (final, every), confirmation waiting on the "
+                         "organiser, S = 1100000000 s*B (final), S_every = 1340000000 s*B (every)")
+
+    def test_score_text(self):
+        """s·B scores are whole numbers, an earlier season's seconds keep four decimals, everywhere
+        the bot prints a score (statuses, reasons, comments, notes.md)."""
+        new = {"S": 4358812.471, "size_factor": 279552, "final_pi_bytes": 279552, "tracks": {"final": "S"}}
+        self.assertEqual((common.score_text(4358812.471, new), common.score_text(4358812.5, new),
+                          common.score_text(None, new)), ("4358812", "4358812", "-"))
+        for old in ({"S": 1.23456, "size_factor": 1.25, "final_pi_bytes": 168800, "size_ref": 524288},
+                    {"S": 1.23456, "tracks": {"final": "S", "every": "S"}}, None):
+            self.assertEqual((common.score_text(1.23456, old), common.unit_text(old)), ("1.2346", "s"))
+        rec = {"id": "pr1-aaaaaaaaaaaa", "score": dict(new, S=4500000.0)}
+        self.assertEqual(decide_mod.against(4358812.471, rec, "final")[1],
+                         "final: 4358812 s*B beats the record pr1-aaaaaaaaaaaa (4500000 s*B) by 3.1%")
     def test_comment_has_no_live_markdown_from_reasons(self):
         e = {"id": "pr1-aaaaaaaaaaaa", "status": "rejected", "verdict": "REJECT", "reasons": ["`](http://evil) @owner"],
              "verified": True}
@@ -706,15 +743,15 @@ class Render(unittest.TestCase):
              "against": {"final": {"record": "pr1-aaaaaaaaaaaa", "S": 1345410.0, "S_record": 1359000.0, "gain": 0.01, "beats": False},
                          "every": None}}
         body = render.publish_comment(e, "https://run")
-        self.assertIn("Against the final record `pr1-aaaaaaaaaaaa`: 1345410.0000 s·B against 1359000.0000 s·B, gain +1.0%", body)
-        self.assertIn("S = 1345410.0000 s·B = P_total 7.9200 s × final proof 169875 bytes (final: P_total · |π_M|), "
+        self.assertIn("Against the final record `pr1-aaaaaaaaaaaa`: 1345410 s·B against 1359000 s·B, gain +1.0%", body)
+        self.assertIn("S = 1345410 s·B = P_total 7.9200 s × final proof 169875 bytes (final: P_total · |π_M|), "
                       "M = 16\n", body)
         self.assertIn("\nP_total: pass 2's total, the median of the timed passes' totals 7.9500 s, 7.9200 s, 7.9000 s\n", body)
         self.assertNotIn("S_every", body)                                   # final only
         self.assertIn("Tracks: final (not every: the reasons below say why)", body)
         e["score"].update(S_every=1779624.0, size_factor_every=224700, max_pi_bytes=224700, tracks={"final": "S", "every": "S_every"})
         body = render.publish_comment(e, "https://run")
-        self.assertIn("\nS_every = 1779624.0000 s·B = P_total × largest proof 224700 bytes (every: P_total · max |π_i|)\n", body)
+        self.assertIn("\nS_every = 1779624 s·B = P_total × largest proof 224700 bytes (every: P_total · max |π_i|)\n", body)
         self.assertIn("Tracks: final, every\n", body)
         self.assertNotIn("duel", body.lower())
         # an earlier v6 season's result (`size_ref`): its exponential factor, in seconds
@@ -737,6 +774,10 @@ class Render(unittest.TestCase):
         body = {"notes/1.md": "~~~~~~\n## pr9-000000000000 · fake · @owner · record\n".encode(), "notes/2.md": b"two",
                 "notes/3.md": b"three"}
         md = render.notes_md(st, body.get, "o/r").decode()
+        self.assertIn(" · record · S = 2.0000 s (sum) · [#2]", md)            # each score in its unit
+        st["submissions"][1]["score"] = {"S": 4358812.471, "size_factor": 279552, "final_pi_bytes": 279552,
+                                         "tracks": {"final": "S"}}
+        self.assertIn(" · record · S = 4358812 s·B (final) · [#2]", render.notes_md(st, body.get, "o/r").decode())
         self.assertLess(md.index("pr2-"), md.index("pr1-"))
         self.assertNotIn("three", md)
         self.assertIn("~~~~~~~markdown", md)       # a fence longer than any in the notes
@@ -1178,6 +1219,53 @@ class Attest(unittest.TestCase):
         v = attest.verify("p", self.res(job="o/r/actions/runs/77/attempts/2"), self.repo, self.rid, "core",
                           run=self.fake(uri="https://github.com/o/r/actions/runs/77/attempts/2"), min_attempt=2)
         self.assertTrue(v["attested"])
+
+
+# The site's site/common.js, loaded in node with the few browser globals it touches at load time.
+SITE_JS = r"""
+const [file, cases] = [process.argv[1], JSON.parse(process.argv[2])];
+global.window = { RF_CONFIG: { REPO: 'o/r', CORE_REPO: 'o/c', DATA_BASE: '', MAIN_BASE: '', FIXTURES: {} } };
+global.location = { search: '' };
+global.document = { addEventListener() {} };
+require(file);
+const RF = window.RF;
+console.log(JSON.stringify(cases.map(sc => {
+  const p = RF.pricedBy(RF.TRACKS[0], sc);
+  return [RF.productRule(sc), p.unit, p.formula, RF.fmtS(sc && sc.S, p.unit)];
+})));
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "node is not installed")
+class Site(unittest.TestCase):
+    def test_site_prices_like_the_bot(self):
+        """The site's `productRule` is the bot's `common.product_rule`: a result without a numeric
+        `size_factor` (the first v6 rules, an earlier season's) is in seconds, never s·B, and shows
+        no product formula; s·B scores are whole numbers with separators."""
+        cases = [{"S": 1.2346, "tracks": {"final": "S", "every": "S"}},
+                 {"S": 4358812.471, "P_total_s": 15.592, "size_factor": 279552, "final_pi_bytes": 279552,
+                  "tracks": {"final": "S"}},
+                 {"S": 30000.04, "size_factor": 1000, "final_pi_bytes": 1000, "tracks": {"final": "S"}},
+                 {"S": 9.9, "size_factor": 1.25, "final_pi_bytes": 168800, "size_ref": 524288, "tracks": {"final": "S"}},
+                 {"S": 9.9, "size_factor": 1.25, "final_pi_bytes": 168800, "tracks": {"final": "S"}},
+                 {"S": 9.9, "size_factor": "279552", "final_pi_bytes": 279552, "tracks": {"final": "S"}},
+                 {"S": 9.9, "size_factor": 279552, "tracks": {"final": "S"}},
+                 None]
+        site = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))),
+                            "site", "common.js")
+        out = subprocess.run(["node", "-e", SITE_JS, site, json.dumps(cases)], capture_output=True, text=True, timeout=60)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        got = json.loads(out.stdout)
+        for sc, (rule, unit, formula, shown) in zip(cases, got):
+            self.assertEqual(rule, common.product_rule(sc), sc)
+            if sc is None:
+                continue                                    # no score: nothing is priced
+            self.assertEqual(unit, common.unit_text(sc), sc)
+            if not rule:
+                self.assertNotIn("|\u03c0\u2081\u2086|", formula.replace("2^(|\u03c0\u2081\u2086| /", ""), sc)
+        self.assertEqual([g[3] for g in got[:3]], ["1.235", "4,358,812", "30,000"])
+        self.assertEqual((got[0][1], got[0][2]), ("s", "S = P_total \u00b7 2^(|\u03c0\u2081\u2086| / 512 KiB)"))
+        self.assertEqual((got[1][1], got[1][2]), ("s\u00b7B", "S = P_total \u00b7 |\u03c0\u2081\u2086|"))
 
 
 if __name__ == "__main__":

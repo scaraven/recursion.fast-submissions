@@ -64,11 +64,11 @@
       // s\u00b7B; an earlier v6 season's result: its exponential factor of the size, the score in seconds)
       const pt = RF.pricedBy(tr, RF.partsIn(sc, tr.id));
       const m = (lbl, val, unit, note) => el('div', null, el('span', { class: 'lbl' }, lbl),
-        el('span', { class: 'val' }, unit === 'score' ? fmtS(val) : fmtPart(val, unit),
+        el('span', { class: 'val' }, unit === 'score' ? fmtS(val, pt.unit) : fmtPart(val, unit),
           unit === 's' ? [' ', el('small', null, 's')] : unit === 'score' ? [' ', el('small', null, RF.unitNode(pt.unit))] : null),
         note ? el('span', { class: 'lbl' }, note) : null);
       const took = e.record_in.includes(tr.id);
-      parts.push(el('h2', { class: 'track-head' }, tr.label, ' ', el('span', { class: 'tab-formula' }, repeat ? `the same ${field} = ${fmtS(v)} ${pt.unit}` : pt.formula),
+      parts.push(el('h2', { class: 'track-head' }, tr.label, ' ', el('span', { class: 'tab-formula' }, repeat ? `the same ${field} = ${fmtS(v, pt.unit)} ${pt.unit}` : pt.formula),
         took ? [' ', el('span', { class: 'badge ' + (retiredIn(e, tr.id) ? 'st-retired' : 'st-record') }, retiredIn(e, tr.id) ? 'record, retired' : 'took the record')] : null));
       if (!repeat) parts.push(el('div', { class: 'metrics m' + (pt.parts.length + 1), role: 'group', 'aria-label': tr.label + ' score' },
         m('Score ' + (field || tr.sym), v, 'score', 'lower is better'),
@@ -78,7 +78,7 @@
         const g = gainOf(e, tr.id);
         parts.push(el('p', { class: 'against' },
           el('strong', null, a.beats ? `Beat the standing ${tr.label.toLowerCase()} record.` : `Did not beat the standing ${tr.label.toLowerCase()} record.`), ' ',
-          `${field || tr.sym} = ${fmtS(a.S !== null ? a.S : v)} ${pt.unit} against ${fmtS(a.S_record)} ${pt.unit} of the record `, recOf(a.record),
+          `${field || tr.sym} = ${fmtS(a.S !== null ? a.S : v, pt.unit)} ${pt.unit} against ${fmtS(a.S_record, pt.unit)} ${pt.unit} of the record `, recOf(a.record),
           `, at the same contract pin: gain = ${pct(g)}. A record needs a gain of more than ${marginText(data)}.`));
       } else if (took && !e.record_of[tr.id]) {
         parts.push(el('p', { class: 'against' }, e.port_of ? `The previous pin's ${tr.label.toLowerCase()} record, re-run at a new contract pin before any other entry.`

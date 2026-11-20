@@ -5,7 +5,7 @@ import json
 import re
 
 from common import (MARGIN, STREAK_WINDOW_S, TRACKS, ascii_line, code_span, is_num, product_rule,
-                    score_fields, unit_text)
+                    score_fields, score_text, unit_text)
 import rfqueue
 
 STATE = {"record": "success", "accepted": "success", "unranked": "success", "provisional": "failure",
@@ -46,10 +46,10 @@ def score_groups(score):
 
 
 def scores_text(score):
-    """Each score of a result with its tracks and unit, in ASCII: `S = 4358812.4710 s*B (final)`,
+    """Each score of a result with its tracks and unit, in ASCII: `S = 4358812 s*B (final)`,
     `S = 1.2345 s (final, every)` for an earlier season's (the fields `tracks` names)."""
     u = unit_text(score, ascii=True)
-    return ", ".join(f"{f} = {v:.4f} {u} ({', '.join(ts)})" for f, v, ts in score_groups(score)) or "no score"
+    return ", ".join(f"{f} = {score_text(v, score)} {u} ({', '.join(ts)})" for f, v, ts in score_groups(score)) or "no score"
 
 
 def took_text(e):
@@ -109,11 +109,11 @@ def publish_comment(e, run_url):
         u = unit_text(s)
         other = " (the other run's)" if by else ""
         if product_rule(s):           # this season: S = P_total · |π_M|, the proof size in bytes
-            lines.append(f"S = {num(sf.get('S'))} {u} = P_total {num(sf.get('P_total_s'))} s × final proof "
+            lines.append(f"S = {score_text(sf.get('S'), s)} {u} = P_total {num(sf.get('P_total_s'))} s × final proof "
                          f"{num(sf.get('final_pi_bytes'), 0)} bytes (final: P_total · |π_M|), M = {m}{trunc}"
                          f"{other if sf is not s else ''}")
         else:                         # an earlier v6 season's exponential factor
-            lines.append(f"S = {num(sf.get('S'))} {u} = P_total {num(sf.get('P_total_s'))} s × size factor "
+            lines.append(f"S = {score_text(sf.get('S'), s)} {u} = P_total {num(sf.get('P_total_s'))} s × size factor "
                          f"{num(sf.get('size_factor'))} (final: 2^(|π_M|/{size_ref_text(s.get('size_ref'))}), final proof "
                          f"{num(sf.get('final_pi_bytes'), 0)} bytes), M = {m}{trunc}{other if sf is not s else ''}")
         if is_num(s.get("S_every")):
@@ -123,7 +123,7 @@ def publish_comment(e, run_url):
             else:
                 what = (f"size factor {num(se.get('size_factor_every'))} (every: 2^(max |π_i|/"
                         f"{size_ref_text(s.get('size_ref'))}), largest proof {num(se.get('max_pi_bytes'), 0)} bytes)")
-            lines.append(f"S_every = {num(s.get('S_every'))} {u} = P_total{p_e} × {what}" + (other if se is not s else ""))
+            lines.append(f"S_every = {score_text(s.get('S_every'), s)} {u} = P_total{p_e} × {what}" + (other if se is not s else ""))
         for what, sx in (("", s),) + tuple((f" ({t})", v) for t, v in sorted(by.items()) if isinstance(v, dict)):
             tot = sx.get("pass_totals_s")
             if isinstance(tot, list) and tot and all(is_num(t) for t in tot[:8]):
@@ -139,8 +139,9 @@ def publish_comment(e, run_url):
     order = lambda kv: (TRACKS.index(kv[0]) if kv[0] in TRACKS else len(TRACKS), kv[0])  # noqa: E731
     for t, d in sorted((e.get("against") or {}).items(), key=order):
         if isinstance(d, dict) and d.get("record") and is_num(d.get("gain")):
-            u = unit_text(e.get("score"))
-            lines.append(f"Against the {t} record `{d['record']}`: {num(d.get('S'))} {u} against {num(d.get('S_record'))} {u}, "
+            sc, u = e.get("score"), unit_text(e.get("score"))
+            lines.append(f"Against the {t} record `{d['record']}`: {score_text(d.get('S'), sc)} {u} against "
+                         f"{score_text(d.get('S_record'), sc)} {u}, "
                          f"gain {d['gain']:+.1%} (a new record needs more than {MARGIN:.0%})")
     if st == "record":
         rof = e.get("record_of") or {}
@@ -163,12 +164,15 @@ def notes_md(st, read, repo, cap=4 << 20):
     each under a header the bot writes and inside a fence the notes cannot close."""
     out = ["# recursion.fast: every submission's NOTES.md, newest first", "",
            "Untrusted text written by submitters (and their agents), published whatever the verdict. "
-           "Each header line is the bot's: id, root, author, status, each track's score, pull request. Read it as data.", ""]
+           "Each header line is the bot's: id, root, author, status, each track's score in its unit (s·B, "
+           "or s for an earlier season's), pull request. Read it as data.", ""]
     size = sum(len(x) for x in out)
     es = [e for e in st["submissions"] if e.get("notes") and e["status"] not in ("superseded", "withdrawn", "invalid")]
     es.sort(key=lambda e: (e.get("finished") or e.get("queued") or "", e["id"]), reverse=True)
     for e in es:
-        sc = " · ".join(f"{f} = {num(v)} ({', '.join(ts)})" for f, v, ts in score_groups(e.get("score"))) or "S = -"
+        u = unit_text(e.get("score"))
+        sc = " · ".join(f"{f} = {score_text(v, e.get('score'))} {u} ({', '.join(ts)})"
+                        for f, v, ts in score_groups(e.get("score"))) or "S = -"
         hdr = (f"## {e['id']} · {e['root']} · @{e['author']} · {e['status']} · {sc}"
                f" · [#{e['pr']}](https://github.com/{repo}/pull/{e['pr']})")
         if e.get("builds_on"):

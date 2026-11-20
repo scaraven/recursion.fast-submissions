@@ -29,7 +29,7 @@ review's Monte Carlo; comparing with the mean of the record's two runs instead w
 σ = 1.75 %: the owner's choice, .github/bot/README.md). The defences against noise mining are the
 copy rules (rfqueue.duplicate_of, rfqueue.prover_owner) and the owner's `retire`."""
 from common import (LEGACY_TRACKS, MARGIN, MAX_ATTEMPTS, ORGANISER_ERRORS, PAUSING_ERRORS, SHA_RE, TRACK_RE, TRACKS, VERDICTS,
-                    clean, clean_reasons, is_num, score_fields, track_scores, unit_text)
+                    clean, clean_reasons, is_num, score_fields, score_text, track_scores, unit_text)
 
 
 def clean_value(v, depth=0):
@@ -78,10 +78,12 @@ def against(S, record, track, margin=MARGIN):
     if s_rec is None:
         return False, f"{track}: the record {rid} has no positive score in this track: no comparison", None
     d = {"record": rid, "S": S, "S_record": s_rec, "gain": 1 - S / s_rec, "beats": S < (1 - margin) * s_rec}
-    u = unit_text(record.get("score"), ascii=True)     # the record's, at the pin: the entry's too
+    rs = record.get("score")
+    u = unit_text(rs, ascii=True)                       # the record's, at the pin: the entry's too
+    st, rt = score_text(S, rs), score_text(s_rec, rs)
     if d["beats"]:
-        return True, f"{track}: {S:.4f} {u} beats the record {rid} ({s_rec:.4f} {u}) by {d['gain']:.1%}", d
-    return False, (f"{track}: {S:.4f} {u} against the record {rid}'s {s_rec:.4f} {u} ({d['gain']:+.1%}; a record "
+        return True, f"{track}: {st} {u} beats the record {rid} ({rt} {u}) by {d['gain']:.1%}", d
+    return False, (f"{track}: {st} {u} against the record {rid}'s {rt} {u} ({d['gain']:+.1%}; a record "
                    f"needs more than {margin:.0%})"), d
 
 
@@ -340,8 +342,9 @@ def confirmed(first, d2):
         return run2 if t in s2 and s2[t] >= s1.get(t, 0) else run1
     w = worse(lead) if ok2 else run1
     u = unit_text(first["score"], ascii=True)
-    both = (f"{lead}: S = {s1.get(lead, 0):.4f} {u}, then {s2[lead]:.4f} {u} in the confirmation" if lead in s2
-            else f"{lead}: S = {s1.get(lead, 0):.4f} {u}; the confirmation has no score in it")
+    n = lambda v: score_text(v, first["score"])  # noqa: E731  (the first run's unit: the confirmation's too)
+    both = (f"{lead}: S = {n(s1.get(lead, 0))} {u}, then {n(s2[lead])} {u} in the confirmation" if lead in s2
+            else f"{lead}: S = {n(s1.get(lead, 0))} {u}; the confirmation has no score in it")
     if took:
         score = {k: v for k, v in (w["score"] or {}).items() if k != "by_track"}
         names = dict(score.get("tracks") or {}) if isinstance(score.get("tracks"), dict) else None
@@ -362,7 +365,7 @@ def confirmed(first, d2):
             score["tracks"] = names
         if by:
             score["by_track"] = by
-        per = "; ".join(f"{t}: {s1.get(t, 0):.4f} {u}, then {s2.get(t, 0):.4f} {u}" for t in took)
+        per = "; ".join(f"{t}: {n(s1.get(t, 0))} {u}, then {n(s2.get(t, 0))} {u}" for t in took)
         why = (f"confirmed: the confirmation run also takes the record of {', '.join(took)} ({per}); "
                f"the record keeps the worse run in each track")
         lost = [t for t in first["took"] if t not in took]

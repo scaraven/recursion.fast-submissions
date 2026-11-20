@@ -77,18 +77,21 @@
     return d;
   }
   // Whether a score is priced at this season's rule (its size factor is the final proof's size in
-  // bytes), or at an earlier v6 season's exponential one (`size_ref`).
+  // bytes), or at an earlier v6 season's exponential one (`size_ref`, or no size factor at all): the
+  // bot's `common.product_rule`, so the site and the bot give a result the same unit.
   function productRule(sc) {
-    if (!sc) return true;
-    if ('size_ref' in sc) return false;
+    if (!sc || typeof sc !== 'object' || 'size_ref' in sc) return false;
     const f = sc.size_factor, pi = sc.final_pi_bytes;
-    return typeof f !== 'number' || (typeof pi === 'number' && pi > 0 && Math.abs(f - pi) <= 1e-9 * pi);
+    return typeof f === 'number' && Number.isFinite(f) && typeof pi === 'number' && Number.isFinite(pi) && pi > 0
+      && Math.abs(f - pi) <= 1e-9 * pi;
   }
   // The track definition whose parts describe a score in track `tr`: the track's own at the score's
   // rule (this season's, or an earlier v6 season's exponential, `oldRule`), except for a result of
-  // the first v6 rules (before the leaf data), which scored `every` by the final proof's `S`.
+  // the first v6 rules (before the leaf data), which scored `every` by the final proof's `S`. No
+  // score at all: the track's own (nothing is priced).
   function pricedBy(tr, sc) {
     const t = (sc && sc.tracks && sc.tracks[tr.id] === 'S' && tr.id !== 'final') ? TRACKS[0] : tr;
+    if (!sc) return t;
     return productRule(sc) ? t : oldRule(t, sc.size_ref);
   }
   // A unit as text and nodes, an exponent (`^(x)`) raised.
@@ -402,10 +405,13 @@
     if (unit === 'B') return v >= 0 ? Math.round(v).toLocaleString('en-US') + '\u00a0B' : '\u2013';
     return unit === 'bytes' ? fmtBytes(v) : unit === 's' ? fmtS(v) : (Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(3));
   }
-  function fmtS(v) {
-    if (v === null || v === undefined) return '–';
+  // A score (or a time) in its unit: s\u00b7B (this season's scores) always as an integer with
+  // separators, `4,358,812`; seconds (no unit given: a time, or an earlier season's score) to 3 or 4
+  // significant digits.
+  function fmtS(v, unit) {
+    if (typeof v !== 'number' || !Number.isFinite(v)) return '–';
+    if (unit === UNIT) return Math.round(v).toLocaleString('en-US');
     const a = Math.abs(v);
-    if (a >= 1e5) return Math.round(v).toLocaleString('en-US');      // a score in s\u00b7B
     return a >= 100 ? v.toFixed(1) : a >= 10 ? v.toFixed(2) : v.toFixed(3);
   }
   const pad = n => String(n).padStart(2, '0');
@@ -567,7 +573,7 @@
   }
 
   window.RF = {
-    CFG, BASE, dataKey, STATUSES, STATUS_INFO, RE, TRACKS, TRACK_IDS, trackOf, pricedBy, unitNode, partsIn, scoreIn, retiredIn, chosenTrack, rememberTrack,
+    CFG, BASE, dataKey, STATUSES, STATUS_INFO, RE, TRACKS, TRACK_IDS, trackOf, pricedBy, productRule, UNIT, unitNode, partsIn, scoreIn, retiredIn, chosenTrack, rememberTrack,
     loadData, loadText, el, svg, ext, page, link, fmtS, fmtPart, fmtBytes, fmtDate, fmtDateTime, timeEl, ago, badge,
     shortSha, gainOf, marginText, pct, unverified, evaluatedAt, relations, records, nameOf, section, chrome, footer
   };
