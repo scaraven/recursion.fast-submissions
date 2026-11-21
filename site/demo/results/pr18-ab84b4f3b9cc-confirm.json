@@ -1,0 +1,43 @@
+{
+ "schema": "recursion.fast/v6/result-1",
+ "verdict": "ACCEPT",
+ "comparable": true,
+ "truncated": false,
+ "harness_commit": "c0dec0dec0dec0dec0dec0dec0dec0dec0dec0de",
+ "job": "scaraven/recursion.fast-submissions/actions/runs/126/attempts/1",
+ "machine": {
+  "fingerprint": "3b7c9e159e159e159e159e159e159e159e159e159e159e159e159e159e159e15",
+  "expected": "3b7c9e159e159e159e159e159e159e159e159e159e159e159e159e159e159e15",
+  "matches": true
+ },
+ "runner": {
+  "name": "rf-bench-1",
+  "environment": "self-hosted",
+  "labels": [
+   "rf-bench"
+  ]
+ },
+ "reasons": [],
+ "prover_sha256": "0000000000000000000000000000000000000000000000000000000000022cce",
+ "score": {
+  "S": 541968.0,
+  "P_total_s": 2.2582,
+  "size_factor": 240000,
+  "final_pi_bytes": 240000,
+  "pass_totals_s": [
+   2.2629,
+   2.2582,
+   2.2553
+  ],
+  "median_pass": 2,
+  "M": 16,
+  "sum_n": 4194304,
+  "c_P": 1.031,
+  "tracks_reason": {
+   "every": "output 2 rejected by acc"
+  },
+  "tracks": {
+   "final": "S"
+  }
+ }
+}

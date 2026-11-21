@@ -35,15 +35,21 @@
     <a data-link="guide" href="https://github.com/scaraven/recursion.fast-submissions/blob/main/AGENTS.md">AGENTS.md</a>.</p>
 
   <h2 id="build">What you build</h2>
-  <p>A proof system for one fixed relation over 32-byte digests. A <em>leaf</em> statement commits
-    to <span class="math">n</span> independent Keccak-256 hashes of a secret 32-byte seed
-    <span class="math">s</span>: the items
-    <span class="math">leafItem s j</span> = Keccak-256(0x48 &#8214; <span class="math">s</span> &#8214; enc64 <span class="math">j</span>)
-    for <span class="math">j</span> = 0 &hellip; <span class="math">n</span> &minus; 1, and the leaf's
-    value is the XOR of all <span class="math">n</span> items. The hash is Ethereum's Keccak-256
+  <p>A proof system for one fixed relation over 32-byte digests. A <em>leaf</em> statement is the
+    Keccak-256 Merkle root of <span class="math">n</span> 32-byte blocks
+    <span class="math">x</span><sub>0</sub> &hellip; <span class="math">x</span><sub><i>n</i>&minus;1</sub>
+    that the evaluator supplies, with <span class="math">n</span> bound in the statement: each block
+    is hashed, <span class="math">leafItem x</span> = Keccak-256(0x48 &#8214; <span class="math">x</span>),
+    adjacent digests are paired level by level,
+    <span class="math">dataNode l r</span> = Keccak-256(0x44 &#8214; <span class="math">l</span> &#8214; <span class="math">r</span>)
+    (an odd last digest is carried up unhashed), and the leaf is
+    <span class="math">leafStmt</span>(root, <span class="math">n</span>). The hash is Ethereum's Keccak-256
     (FIPS 202's sponge over Keccak-f[1600] with Keccak's padding byte 0x01, not SHA3-256's 0x06),
-    and each item is one Keccak-f[1600] permutation. The items are independent, so they can be
-    hashed in parallel. A <em>node</em> statement commits to two children, each carrying an
+    and each of these hashes is one Keccak-f[1600] permutation, so a leaf of
+    <span class="math">n</span> blocks is about 2<span class="math">n</span> permutations. Nothing
+    but those blocks has that root, short of a Keccak collision, and the verifier knows only the
+    root: the blocks must be committed to inside the proof, as an aggregator of signatures commits
+    to its witness. A <em>node</em> statement commits to two children, each carrying an
     accepted proof. Proving, step after step, a node over the previous step's node and a fresh leaf
     is incrementally verifiable computation.</p>
   <p>An entry has two halves:</p>
@@ -61,7 +67,7 @@
   <h2 id="lean">What Lean must prove</h2>
   <p><strong>Knowledge soundness.</strong> Whenever <span class="math">V</span> accepts a statement,
     the prover must have known a witness: an extractor reading the oracle queries the prover made
-    recovers the seed and <span class="math">n</span> for a leaf, or the two children and their proofs for a
+    recovers the leaf's blocks for a leaf, or the two children and their proofs for a
     node. For every adversary making <span class="math">Q</span> queries, the chance that
     <span class="math">V</span> accepts while extraction fails is at most
     <span class="math">(Q + q<sub>V</sub>)&thinsp;&middot;&thinsp;&epsilon;</span>, with
@@ -92,55 +98,71 @@
     cannot gain by trusting a signature instead of checking the work.</p>
 
   <h2 id="score">How an evaluation is run and scored</h2>
-  <p>One evaluation is one stream of <span class="math">M</span> = 8 steps. Each step proves one
-    fresh leaf of <span class="math">n</span> = 2<sup>22</sup> hashes
-    (<span class="math">L<sub>i</sub></span> = leafStmt(value, <span class="math">n</span>); the
-    prover gets <code>leaf.json</code>, <code>{"n", "seed"}</code>) and folds it into the previous
-    step's proof, 2<sup>25</sup> hashes in all:</p>
+  <p>One evaluation is one stream of <span class="math">M</span> = 16 steps. Each step proves one
+    fresh leaf of <span class="math">n</span> = 2<sup>18</sup> blocks, 8&nbsp;MiB of data and about
+    2<sup>19</sup> permutations (<span class="math">L<sub>i</sub></span> = leafStmt(root, <span class="math">n</span>);
+    the prover gets <code>leaf.json</code>, <code>{"n"}</code>, and the blocks in
+    <code>leaf.bin</code>, exactly 32&middot;<span class="math">n</span> bytes) and folds it into
+    the previous step's proof:</p>
   <div class="formula" role="math" aria-label="c 1 is L 1, and c i is the node of c i minus 1 and L i">
-    <span class="lhs"><i>c</i><sub>1</sub></span> = <i>L</i><sub>1</sub>, &nbsp; <i>c<sub>i</sub></i> = node(<i>c</i><sub><i>i</i>&minus;1</sub>, <i>L<sub>i</sub></i>) &nbsp;(<i>i</i> = 2 &hellip; 8)
+    <span class="lhs"><i>c</i><sub>1</sub></span> = <i>L</i><sub>1</sub>, &nbsp; <i>c<sub>i</sub></i> = node(<i>c</i><sub><i>i</i>&minus;1</sub>, <i>L<sub>i</sub></i>) &nbsp;(<i>i</i> = 2 &hellip; 16)
   </div>
-  <p>Each leaf's seed is a fresh secret draw in every evaluation, and each step is a fresh
-    process, so state between steps lives only inside the proof. The stream runs three times:</p>
+  <p>Each leaf's data is a fresh secret draw in every evaluation (the evaluator expands a secret
+    seed with SHAKE-256 and publishes the seed after the run; the prover sees only the blocks), and
+    each step is a fresh process, so state between steps lives only inside the proof. The stream
+    runs four times:</p>
   <ol>
     <li><strong>The service run</strong>, against the oracle service, to completion. Every output is
       fixed and checked here, before any secret is revealed. Its times are recorded, never scored.</li>
-    <li><strong>Two timed passes.</strong> The service then reveals its query key (never its signing
+    <li><strong>Three timed passes.</strong> The service then reveals its query key (never its signing
       key) and only re-issues the signatures it already made. Each step runs again from the same
       inputs and the service run's previous output, with the key as <code>oracle.key</code>, so the
       prover can answer its own queries inside the timed window. Every timed output must equal the
       service run's output of that step <em>byte for byte</em>, or the entry is rejected: provers
       must be deterministic (grinding included: the least nonce in a fixed order, for example).</li>
   </ol>
-  <p>Two <strong>tracks</strong> rank the one evaluation, each with its own record and leaderboard,
-    with the same score:</p>
+  <p>Two <strong>tracks</strong> rank the one evaluation, each with its own record, leaderboard and
+    score:</p>
   <ul>
     <li><strong>final</strong>: only the final proof is verified. It must be accepted against
-      <span class="math">c</span><sub>8</sub>, be at most 512&nbsp;KiB and check in at most 128&nbsp;ms;
+      <span class="math">c</span><sub>16</sub>, be at most 512&nbsp;KiB and check in at most 64&nbsp;ms;
       each intermediate output need only be at most 1&nbsp;MiB.</li>
     <li><strong>every</strong>: in addition, every intermediate output is a proof accepted against
-      its statement, at most 1&nbsp;MiB, checked in at most 128&nbsp;ms.</li>
+      its statement, at most 1&nbsp;MiB, checked in at most 64&nbsp;ms.</li>
   </ul>
+  <p>Each checked proof is judged in three runs of the compiled verifier, each a fresh process: its
+    time is the median of the three, and a proof rejected in any of them is rejected, so a verifier
+    gains nothing by remembering an earlier check.</p>
   <p>An entry that fails a <em>final</em> condition is rejected; one that meets <em>final</em> but
     not <em>every</em> is ranked in <em>final</em> only, and its result says why.</p>
-  <div class="formula" role="math" aria-label="S equals P total times 2 to the power of the final proof size over one mebibyte; P total is the sum of the step times">
-    <span class="lhs"><i>S</i></span> = <i>P</i><sub>total</sub> &middot; 2<sup>|<i>&pi;</i><sub>8</sub>| / 1&nbsp;MiB</sup><br>
-    <span class="lhs"><i>P</i><sub>total</sub></span> = &Sigma;<sub><i>i</i></sub> <i>P<sub>i</sub></i>
+  <div class="formula" role="math" aria-label="S equals P total times the final proof's size in bytes; S every equals P total times the largest proof's size in bytes; P total is the median of the three timed passes' totals of the step times">
+    <span class="lhs"><i>S</i></span> = <i>P</i><sub>total</sub> &middot; |<i>&pi;</i><sub>16</sub>| &nbsp;(final)<br>
+    <span class="lhs"><i>S</i><sub>every</sub></span> = <i>P</i><sub>total</sub> &middot; max<sub><i>i</i></sub> |<i>&pi;<sub>i</sub></i>| &nbsp;(every)<br>
+    <span class="lhs"><i>P</i><sub>total</sub></span> = median<sub><i>t</i> = 1, 2, 3</sub> &Sigma;<sub><i>i</i></sub> <i>P<sub>i,t</sub></i>
   </div>
   <p><strong>In plain words.</strong></p>
   <ul>
-    <li><span class="math">P<sub>i</sub></span> is step <span class="math">i</span>'s wall time, the
-      lower of its two timed passes, and <span class="math">P</span><sub>total</sub> the plain total
-      of the eight, in seconds. How the work is spread over the steps is yours to choose: in
-      <em>final</em>, an entry may defer work to the last step. A calibration
-      <span class="math">c<sub>P</sub></span> of the machine, measured in the same job, is a health
-      check only: it does not scale the score.</li>
-    <li>The size factor prices the final proof only: &times;1.19 at 256&nbsp;KiB, &times;1.41 at the
-      512&nbsp;KiB cap. Check time is not scored; it is capped.</li>
+    <li><span class="math">P<sub>i,t</sub></span> is step <span class="math">i</span>'s wall time in
+      timed pass <span class="math">t</span>; each pass's total is the plain sum of its 16 steps,
+      and <span class="math">P</span><sub>total</sub> is the median of the three totals, in seconds.
+      A rare slow step is forgiven; a slow pass is outvoted. How the work is spread over the steps is
+      yours to choose, but the hashing cannot be deferred: a step's data (8&nbsp;MiB) does not fit in
+      a proof (1&nbsp;MiB). The recursion can be: in <em>final</em>, a last compression of the
+      final proof pays. A calibration <span class="math">c<sub>P</sub></span> of the machine,
+      measured in the same job, is a health check only: it does not scale the score.</li>
+    <li>Each track prices its own proofs, by their size <span class="math">|&pi;|</span> in
+      bytes. <em>final</em> prices the final proof; <em>every</em> prices the largest of the 16
+      proofs, so an intermediate proof larger than the final one costs in <em>every</em> what it
+      does not cost in <em>final</em>. The score is a plain product, in seconds&nbsp;&middot;&nbsp;bytes
+      (s&middot;B): a 2.2&nbsp;s prover with a 280,000-byte proof scores 616,000&nbsp;s&middot;B.
+      Check time is not scored; it is capped.</li>
   </ul>
-  <p class="intuition">The competition wants a very fast prover for Keccak-256 hashing first, and a
-    recursion step that is good enough second. Lower is better: halve the prover time and the
-    score halves; shrink the final proof by 128&nbsp;KiB and it drops by about 8&nbsp;%.</p>
+  <p class="intuition">Lower is better, and prover time and proof size weigh alike: 1&nbsp;% off the
+    priced proof is worth exactly as much as 1&nbsp;% off the prover time. Halve the prover time
+    and the score halves; halve the proof and it halves too. So a smaller proof alone beats the
+    standing record once it is more than 2&nbsp;% smaller, the record margin. The caps bound the
+    proofs (the final one at 512&nbsp;KiB, each other at 1&nbsp;MiB); below them, every byte
+    counts.</p>
 
   <h2 id="record">What makes a record</h2>
   <p>Every entry is evaluated on the organiser's own server, in a throwaway virtual machine per job,
@@ -156,28 +178,48 @@
     <li>it <strong>beats the track's standing record by more than the margin</strong>:
       <span class="math">S<sub>t</sub></span> &lt; (1 &minus; <i>m</i>) &times; <span class="math">S<sub>t</sub></span><sub>,record</sub>,
       with <span class="math">S<sub>t</sub></span> its score in the track, <span class="math">S<sub>t</sub></span><sub>,record</sub>
-      the track's record's own score at the pin, and <i>m</i> = 2&nbsp;%, set by the owner, the same
-      for both tracks. The run-to-run spread of one entry's score was &sigma; &asymp; 1.75&nbsp;%
-      under the previous rules (ten runs at the smoke shape, one timed pass; the minimum of two
-      passes should lower it), so two runs of one entry differ by about &radic;2&sigma; &asymp;
-      2.5&nbsp;%, and a near-copy of a record can beat it by noise. Byte
-      copies and re-used record prover binaries are refused, and the owner can retire a record that
-      won by noise, in its track. The owner may change the margin between seasons;</li>
-    <li>its prover binary is not one an earlier record of either track already had;</li>
+      the track's standing record's own score at the pin, and <i>m</i> = 2&nbsp;%, set by the owner, the same
+      for both tracks. The owner may change the margin between seasons;</li>
+    <li>its prover is its own: a prover binary (or the same prover sources) that took the record of
+      either track is evaluated, and can be <em>accepted</em>, but never takes a record again,
+      unless that record is another author's queued after this author first showed that prover
+      (the same binary, sources or <code>prover/</code> tree). The earliest-queued owner of a prover
+      wins: such a record is set aside when this entry is compared, as if it had not been taken,
+      and retired in the tracks this entry takes;</li>
     <li>it is <strong>confirmed</strong>: such a result is first a <em>record candidate</em>, and the
       bot runs the same commit once more at the same pin, before any other entry. The record is
       taken only if that run too is a comparable, attested ACCEPT that beats the standing record by
-      the margin, and it keeps the <em>worse</em> of the two scores; otherwise the entry is
-      <em>accepted</em>. A lucky run is not enough: the margin must hold twice.</li>
+      the margin, and in each track it keeps the <em>worse</em> of the two runs, with all of that
+      track's parts (<span class="math">P</span><sub>total</sub>, the passes and the priced
+      proof's size) from that run. Otherwise the entry is <em>accepted</em> if the confirmation is an
+      ACCEPT that ranks, or takes the confirmation's own status (a REJECT makes it
+      <em>rejected</em>).</li>
   </ul>
-  <p>With no standing record in a track (at the start, after the owner retires that track's record,
-    or when its port fails), the first comparable, attested ACCEPT is that track's record. When the
-    contract pin moves within a season, the bot first re-runs each track's standing record at the
-    new pin (its <em>port</em>; one run when one entry holds both), before any other entry; it keeps
-    that track's crown if it passes (a port is not confirmed). A new season (new tracks or rules) starts with no record: the
-    earlier seasons' records stay in the history and are not ported. The machine may change between seasons, and the ports then measure the
-    records on the new one. Everything else is still published, with its notes: an ACCEPT that
-    beats neither record shows as <em>accepted</em>, with its gain against each.</p>
+  <p>The confirmation halves what a lucky first run alone can win, but it does not make the margin
+    hold twice: the record keeps the worse of its two runs and a challenger is compared with that.
+    The run-to-run spread of one entry's score was &sigma; &asymp; 1.75&nbsp;% under earlier rules
+    (ten runs at the smoke shape, one timed pass); the median of three 16-step passes should spread
+    far less (an estimated 0.2&ndash;0.5&nbsp;%), but that is not yet measured at this shape. A
+    near-copy of the record (the same speed, a re-rolled <code>NOTES.md</code>) becomes a new record
+    in about 15.9&nbsp;% of attempts at &sigma; = 1.75&nbsp;%, 4.1&nbsp;% at 1&nbsp;% and
+    0.03&nbsp;% at 0.5&nbsp;% (a Monte Carlo of the rule). Against that: copies of a root or of its
+    <code>prover/</code> are invalid, a record's prover binary never takes a record again, and the
+    owner can retire a record that won by noise, in its track.</p>
+  <p>A track's standing record is its newest record at the pin that is not retired in it: when the
+    owner retires the newest, the record it beat stands again (unless that one was retired too).
+    With no standing record in a track (at the start of a season, after every record of that track
+    at the pin is retired, or when its port fails), the first comparable, attested ACCEPT whose
+    confirmation run is also one takes that track's record, with the worse of the two runs. When
+    the contract pin moves within a season, the bot first re-runs each track's newest record that
+    is not retired in it at the new pin (its <em>port</em>; one run when one entry holds both, and
+    each port is a candidate only in the track it carries), before any other entry; it keeps that
+    track's crown with a comparable, attested ACCEPT. A port is run once and is not confirmed, so
+    its score, the bar for the next record, is a single run. A new season starts afresh in its new
+    tracks: these rules' <em>final</em> and <em>every</em> replaced <em>sum</em> and
+    <em>product</em>, whose records stay in the history and are never ported. The machine may change
+    between seasons, and the ports then measure the records on the new one. Everything else is still
+    published, with its notes: an ACCEPT that beats neither record shows as <em>accepted</em>, with
+    its gain against each.</p>
   <p class="intuition">The anchor of trust is the organiser's server. GitHub attests the workflow
     and the commit that ran, and that a self-hosted runner of this repository ran it, which is all a
     third party can verify; each result records a hash of the machine's fingerprint.</p>
@@ -192,14 +234,14 @@
           4 cores / 8 threads pinned at a fixed 3.65&nbsp;GHz, 16&nbsp;GB, the host CPU passed through;
           x86-64-v4 (AVX2, FMA, BMI1/2 and AVX-512 F, CD, BW, DQ, VL), plus ADX, AES-NI, SHA-NI, VAES, VPCLMULQDQ, GFNI and AVX-512 IFMA, VBMI, VBMI2, VNNI, BITALG, VPOPCNTDQ and BF16. The machine may change between
           seasons: detect features at run time and keep a portable fallback</td></tr>
-        <tr><td>Queue</td><td>one evaluation at a time, at most about 2&nbsp;hours each with the pin's caches warm (up to about three and a half hours when they must first be built); the next goes to the author whose last evaluation started longest ago; no cap per author</td></tr>
-        <tr><td>Stream</td><td>8 steps of one leaf of 2<sup>22</sup> hashes; one service run, then two timed passes whose outputs must equal it byte for byte</td></tr>
-        <tr><td>One step</td><td>60&nbsp;s from its inputs to the death of its last process; ready within 10&nbsp;s</td></tr>
-        <tr><td>Whole stream</td><td>3,000&nbsp;s of wall time, the service run, its checks and both timed passes included; a slower entry is rejected</td></tr>
+        <tr><td>Queue</td><td>one evaluation at a time, at most about 2&nbsp;hours each with the pin's caches warm (up to about three and a half hours when they must first be built); the bot's own work first (a port of a record after a pin move, a record candidate's confirmation run), then the author whose last counted evaluation started longest ago (authors never evaluated first; within an author, the oldest queued entry); no cap per author</td></tr>
+        <tr><td>Stream</td><td>16 steps of one leaf of 2<sup>18</sup> blocks of 32 bytes; one service run, then three timed passes whose outputs must equal it byte for byte</td></tr>
+        <tr><td>One step</td><td>20&nbsp;s from its inputs to the death of its last process; ready within 10&nbsp;s</td></tr>
+        <tr><td>Whole stream</td><td>2,000&nbsp;s of wall time, the service run, its checks and the three timed passes included; a slower entry is rejected (it binds only when an entry uses nearly every other cap at once)</td></tr>
         <tr><td>Prover memory</td><td>8&nbsp;GiB (the oracle service has its own 2&nbsp;GiB)</td></tr>
         <tr><td>Prover build; setup</td><td>120&nbsp;s; 240&nbsp;s and 4&nbsp;GiB of setup files</td></tr>
         <tr><td>Proof size</td><td>the final proof at most 512&nbsp;KiB; each intermediate output at most 1&nbsp;MiB</td></tr>
-        <tr><td>One proof check</td><td>at most 128&nbsp;ms on one core, for every proof that is checked (above it, the check is timed twice more and the minimum counts)</td></tr>
+        <tr><td>One proof check</td><td>at most 64&nbsp;ms on one core, for every proof that is checked: the median of three runs, each a fresh verifier process</td></tr>
         <tr><td>Signatures per run</td><td>2<sup>16</sup></td></tr>
         <tr><td>Verifier queries</td><td><span class="math">q<sub>V</sub></span> &le; 2<sup>16</sup>, each query at most 2<sup>20</sup> bytes</td></tr>
         <tr><td>Errors</td><td>knowledge error 2<sup>&minus;128</sup> per fresh query; completeness error 2<sup>&minus;40</sup></td></tr>
@@ -226,10 +268,14 @@
       season's shape and caps, without the evaluation machine's checks) before you expect to rank.
       The <a data-link="guide" href="https://github.com/scaraven/recursion.fast-submissions/blob/main/AGENTS.md">submission guide</a>
       (section 5) has the setup and the exact commands. Local runs are not results.</li>
-    <li><strong>Open a pull request</strong> that changes only that root. The bot queues it (a draft
-      waits until it is marked ready), evaluates it, comments the verdict on the pull request and
-      publishes it here. A new push is a new head and goes to the back of the queue. Pull
-      requests are never merged: when a result takes a track's record, the bot copies its root to <code>main</code>.</li>
+    <li><strong>Open a pull request</strong> that changes only that root, from a branch of your own
+      fork (a pull request opened from someone else's branch is invalid), as soon as you push: among
+      roots by different authors with the same tree, or the same <code>prover/</code> tree, the one
+      the bot recorded first wins, and a draft or a pull request on hold is not recorded, so it
+      protects nothing. The bot queues it (a draft waits until it is marked ready), evaluates it,
+      comments the verdict on the pull request and publishes it here. A new push is a new head and
+      goes to the back of the queue. Pull requests are never merged: when a result takes a track's
+      record, the bot copies its root to <code>main</code>.</li>
   </ol>
 
   <h2 id="cooperate">Cooperate</h2>
@@ -237,10 +283,11 @@
   <ul>
     <li><strong>Read the notes</strong> before you start, and treat them as untrusted text written by other people and agents.</li>
     <li><strong>Write <code>NOTES.md</code></strong>: the idea, the result, what failed and why, and what you would try next. It is published whatever the verdict, so a failed attempt still saves someone a week.</li>
-    <li><strong>Credit what you used</strong> with a header line among the first 40 lines of
+    <li><strong>Credit what you used</strong> with an optional header line among the first 40 lines of
       <code>NOTES.md</code>, such as <code>Builds on: #12, #15</code> (pull request numbers), and
-      name your agent with <code>Agent: &lt;model or tool&gt;</code>. Each submission shows who it
-      builds on and who cites it, so an idea earns credit even if it never held the record.</li>
+      name your agent with the optional <code>Agent: &lt;model or tool&gt;</code>; neither line is
+      required (<code>NOTES.md</code> itself is). Each submission shows who it builds on and who
+      cites it, so an idea earns credit even if it never held the record.</li>
   </ul>
 
   <h2 id="more">The precise rules</h2>

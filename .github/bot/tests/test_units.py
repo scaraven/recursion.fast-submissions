@@ -1,11 +1,14 @@
 import json
+import os
 import re
+import shutil
 import subprocess
 import unittest
 
 import tests  # noqa: F401  (puts the bot on sys.path)
 import attest
 import common
+import decide as decide_mod
 import pin
 import render
 import rfqueue
@@ -25,18 +28,25 @@ def E(i, pr, author, status="queued", queued="2026-01-01T00:00:00Z", started=Non
     return e
 
 
-def V6(S=1.0, every=True, **kw):
-    """A v6 result: one score `S` in both tracks, or (`every=False`) in `final` only, with the core's reason."""
-    tr = {"final": "S", "every": "S"} if every else {"final": "S"}
-    sc = {"S": S, "P_total_s": S / 1.25, "size_factor": 1.25, "final_pi_bytes": 337500, "tracks": tr}
-    if not every:
+F6 = 168800                  # the size factor of a 168,800-byte proof: its size in bytes
+
+
+def V6(S=1.0, every=True, S_every=None, **kw):
+    """A v6 result: `S` in `final` and `S_every` (default `S`: the final proof is the largest) in
+    `every`, or (`every=False`) `final` only, with the core's reason."""
+    tr = {"final": "S", "every": "S_every"} if every else {"final": "S"}
+    sc = {"S": S, "P_total_s": S / F6, "size_factor": F6, "final_pi_bytes": 168800, "tracks": tr}
+    if every:
+        sc.update(S_every=S if S_every is None else S_every, size_factor_every=F6, max_pi_bytes=168800)
+    else:
         sc["tracks_reason"] = {"every": "output 2 rejected by acc"}     # the core's form
     return R(S=S, score=sc, **kw)
 
 
 def R(verdict="ACCEPT", S=1.0, comparable=True, harness=PIN, **kw):
     r = {"verdict": verdict, "comparable": comparable, "harness_commit": harness, "truncated": False,
-         "score": {"S": S, "P_total_s": S, "size_factor": 1.0, "final_pi_bytes": 0, "tracks": {"final": "S", "every": "S"}},
+         "score": {"S": S, "P_total_s": S, "size_factor": 1.0, "final_pi_bytes": 1,
+                   "tracks": {"final": "S", "every": "S"}},
          "reasons": ["r1"]}
     r.update(kw)
     return r
@@ -78,19 +88,39 @@ class Queue(unittest.TestCase):
         self.assertEqual([e["pr"] for e in rfqueue.order(self.st(*done, fresh, E(8, 8, "bob")))], [8, 7])
 
     def test_named_organiser_errors_never_count_against_the_author(self):
-        """A run that ended in a named organiser error (fingerprint, lengths, drift, setup, cache,
-        attestation) never counts as the author's start in the fair order, nor uses up the
-        entry's one uncounted unnamed ERROR."""
+        """A run that ended in a named organiser error (fingerprint, lengths, malformed, drift, setup,
+        cache, attestation) never counts as the author's start in the fair order, nor uses up the
+        entry's one uncounted unnamed ERROR; `harness` and `overhead`, which an entry might provoke,
+        count as unnamed ERRORs do (from the entry's second)."""
         for kind in common.UNCOUNTED_ERRORS:
             e = E(2, 2, "ann", started="2026-01-02T11:10:00Z")
             self.assertFalse(rfqueue.settle_run(e, kind, error=True), kind)
             self.assertIsNone(rfqueue.counted_start(dict(e, status="queued", verdict="ERROR")), kind)
             self.assertEqual(e.get("generic_errors", 0), 0, kind)
         self.assertTrue(rfqueue.settle_run(E(3, 3, "ann", started="t"), "harness", error=True) is False)  # the first unnamed one
+        self.assertIn("malformed", common.UNCOUNTED_ERRORS)       # the runner's record of the stream (v6), not `harness`
+        # `overhead` (a part killed at PART_S that the entry's clock does not explain: the runner's own work
+        # past runner_budget_s): an entry can lengthen the runner's work, so it is treated like `harness`:
+        # named, retried once, counted in the fair order from the entry's second, once per author toward a pause
+        self.assertNotIn("overhead", common.UNCOUNTED_ERRORS)
+        self.assertIn("overhead", common.ORGANISER_ERRORS)
+        self.assertNotIn("overhead", common.ENTRY_PROOF_ERRORS)
+        self.assertNotIn("overhead", common.PAUSING_ERRORS)
+        self.assertEqual(set(common.ORGANISER_ERRORS) - set(common.UNCOUNTED_ERRORS), {"harness", "overhead"})
+        for kind in ("harness", "overhead"):
+            e = E(4, 4, "ann", started="2026-01-02T12:00:00Z", attempts=1)
+            self.assertFalse(rfqueue.settle_run(e, kind, error=True), kind)      # the entry's first: not counted
+            self.assertEqual((e["generic_errors"], e["counted_at"]), (1, None), kind)
+            rfqueue.mark_running(e, "2026-01-02T13:00:00Z", "u")
+            self.assertTrue(rfqueue.settle_run(e, kind, error=True), kind)       # its second (the retry's): counted
+            self.assertEqual(rfqueue.counted_start(dict(e, status="error")), "2026-01-02T13:00:00Z", kind)
+        x = lambda a: {"id": "i", "author": a, "kind": "overhead"}  # noqa: E731
+        self.assertEqual(rfqueue.pause_count([x("ann"), x("ann"), x("ann")]), 1)   # once per author
+        self.assertEqual(rfqueue.pause_count([x("ann"), x("bob")]), 2)
 
     def test_pause_count_needs_two_authors_or_an_entry_proof_error(self):
         """The streak's errors that count toward a pause: every entry-proof one (fingerprint,
-        lengths, setup, cache, attestation), and of the others (drift, harness, unnamed, reaped) one
+        lengths, malformed, setup, cache, attestation), and of the others (drift, harness, unnamed, reaped) one
         per author, so one author's entries never pause the queue alone."""
         x = lambda a, k: {"id": "i", "author": a, "kind": k}  # noqa: E731
         self.assertEqual(rfqueue.pause_count([x("ann", k) for k in ("drift", "harness", "unnamed", "reaped") * 5]), 1)
@@ -98,7 +128,7 @@ class Queue(unittest.TestCase):
         for k in common.ENTRY_PROOF_ERRORS:
             self.assertEqual(rfqueue.pause_count([x("ann", k), x("ann", k)]), 2, k)
             self.assertEqual(rfqueue.pause_count([x("ann", "harness"), x("ann", k)]), 2, k)
-        self.assertEqual(set(common.ENTRY_PROOF_ERRORS) | {"drift", "harness"}, set(common.ORGANISER_ERRORS))
+        self.assertEqual(set(common.ENTRY_PROOF_ERRORS) | {"drift", "overhead", "harness"}, set(common.ORGANISER_ERRORS))
         s = self.st(E(1, 1, "ann"))
         e = s["submissions"][0]
         for k in range(common.STREAK_CAP + 5):
@@ -226,6 +256,60 @@ class Queue(unittest.TestCase):
         s["submissions"] += [E(6, 6, "bob", tree="Y", status="running")]
         self.assertIn("being evaluated", rfqueue.duplicate_of(s, "new", 6, "bob", "Y"))    # an empty push meanwhile
 
+    def test_a_copied_prover_tree_is_a_copy(self):
+        """The copy rule also keys on the `prover/` tree: another author's root with the same prover/
+        (new NOTES, Lean or root name) came first and is a copy, whatever became of the first; the
+        author's own prover under a new root is allowed; an invalid entry never counts."""
+        s = self.st(E(1, 1, "alice", tree="T", prover_tree="P", status="superseded"),
+                    E(2, 2, "eve", tree="U", prover_tree="Q", status="invalid"))
+        self.assertIn("the same prover/ as pr1-", rfqueue.duplicate_of(s, "new", 9, "bob", "T2", "P"))
+        self.assertIn("the same root as pr1-", rfqueue.duplicate_of(s, "new", 9, "bob", "T", "P2"))
+        self.assertIsNone(rfqueue.duplicate_of(s, "new", 9, "alice", "T2", "P"))      # her own prover, a new root
+        self.assertIsNone(rfqueue.duplicate_of(s, "new", 9, "bob", "T2", "Q"))        # an invalid entry: never
+        self.assertIsNone(rfqueue.duplicate_of(s, "new", 9, "bob", "T2", None))
+        # compaction keeps the prover tree for the rule
+        self.assertIn("prover_tree", rfqueue.COMPACT_KEYS)
+
+    def test_the_earliest_queued_owner_of_a_prover_wins(self):
+        """The heavy review's snipe.py: bob copies alice's queued prover (one comment changed: a new
+        prover/ tree, the same binary), runs first in the fair order and takes the record. Alice's run
+        of that binary is not barred by bob's record (she showed it first): the record is set aside
+        and she is compared as if it had not been taken. A record of the same binary by the same
+        author, or queued first, bars it, as before."""
+        alice = E(2, 2, "alice", queued="2026-01-03T00:00:00Z", status="running", prover_tree="PA")
+        bob = E(3, 3, "bob", "record", queued="2026-01-03T01:00:00Z", finished="2026-01-04T00:00:00Z",
+                harness_commit=PIN, prover_tree="PB", prover_sha256="c" * 64)
+        old = E(4, 4, "carol", "record", queued="2025-12-01T00:00:00Z", finished="2025-12-02T00:00:00Z",
+                harness_commit=PIN, prover_sha256="d" * 64, record_in=["final", "every"],
+                score={"S": 10.0, "S_every": 10.0, "tracks": {"final": "S", "every": "S_every"}})
+        s = self.st(old, alice, bob)
+        self.assertEqual(rfqueue.standing(s, PIN)["final"], bob)
+        keys = {("prover_sha256", "c" * 64), ("prover_tree", "PA")}
+        self.assertEqual(rfqueue.prover_owner(s, alice, keys), ({}, [bob["id"]]))
+        self.assertEqual(rfqueue.standing(s, PIN, [bob["id"]])["final"], old)       # compared with carol's record
+        d = decide(R(S=9.0, prover_sha256="c" * 64), OK, PIN, rfqueue.standing(s, PIN, [bob["id"]]), 1, {})
+        self.assertEqual((d["status"], d["record_of"]["final"]), ("record", old["id"]))
+        # the sources hash matches too
+        bob["prover_sha256"], bob["prover_sources_sha256"] = "e" * 64, "f" * 64
+        self.assertEqual(rfqueue.prover_owner(s, alice, {("prover_sources_sha256", "f" * 64)}), ({}, [bob["id"]]))
+        # queued after bob's record, or bob's own: barred
+        late = E(5, 5, "alice", queued="2026-01-05T00:00:00Z", status="running")
+        self.assertEqual(rfqueue.prover_owner(self.st(old, bob, late), late, {("prover_sha256", "e" * 64)}),
+                         ({"e" * 64: bob["id"]}, []))
+        again = E(6, 6, "bob", queued="2025-01-01T00:00:00Z", status="running")
+        self.assertEqual(rfqueue.prover_owner(self.st(old, bob, again), again, {("prover_sha256", "e" * 64)})[0],
+                         {"e" * 64: bob["id"]})
+        # alice's earlier entry with the same prover/ tree (a later push of hers) keeps her first time
+        late["prover_tree"] = "PA"
+        s = self.st(old, dict(alice, status="superseded"), bob, late)
+        self.assertEqual(rfqueue.prover_owner(s, late, {("prover_sha256", "e" * 64), ("prover_tree", "PA")}),
+                         ({}, [bob["id"]]))
+        # decide bars by the sources hash as well as the binary's
+        d = decide(R(S=1.0, prover_sha256="1" * 64, entry={"prover_sources_sha256": "f" * 64}), OK, PIN, {}, 1,
+                   {"f" * 64: bob["id"]})
+        self.assertEqual(d["status"], "accepted")
+        self.assertTrue(any("never a new record" in r for r in d["reasons"]))
+
     def test_records_per_pin_and_retirement(self):
         s = self.st(E(1, 1, "a", status="record", finished="2026-01-01", harness_commit=PIN),
                     E(2, 2, "b", status="record", finished="2026-01-02", harness_commit="c" * 40))
@@ -239,6 +323,16 @@ class Queue(unittest.TestCase):
         self.assertIsNone(rfqueue.current_record(s, PIN, "final"))   # a retired record never stands again
         self.assertEqual(s["submissions"][0]["status"], "retired")
         self.assertEqual([e["pr"] for e in rfqueue.records(s)], [2, 1])
+        # two records at one pin: retiring the newest, the one it beat stands again; never a retired one
+        a = E(3, 3, "a", status="record", finished="2026-01-03", harness_commit=PIN)
+        b = E(4, 4, "b", status="record", finished="2026-01-04", harness_commit=PIN)
+        s = self.st(a, b)
+        self.assertIs(rfqueue.current_record(s, PIN, "final"), b)
+        rfqueue.retire(b, "final", "t", "x")
+        self.assertIs(rfqueue.current_record(s, PIN, "final"), a)
+        rfqueue.retire(a, "final", "t", "x")
+        self.assertIsNone(rfqueue.current_record(s, PIN, "final"))
+        self.assertEqual(rfqueue.due_ports(s, "c" * 40), {})
 
     def test_dump_names_the_standing_record(self):
         st = rfqueue.empty("o/r", PIN)
@@ -299,24 +393,28 @@ class Queue(unittest.TestCase):
         self.assertEqual(rfqueue.port(s, 2, "c" * 40, "now", o=b)["port_tracks"], ["every"])
         self.assertIsNone(rfqueue.due_port(s, "c" * 40))
         # retirement of one track: the entry keeps the other's crown; the retired track falls back to
-        # no record (the newest record of the track is retired, an older one never stands again)
+        # the newest record of the track that is not retired (the one the retired record beat)
         s = self.st(a, b)
         self.assertTrue(rfqueue.retire(b, "every", "t", "x"))
-        self.assertEqual((b["status"], rfqueue.standing(s, PIN)), ("retired", {"final": a, "every": None}))
-        self.assertEqual(rfqueue.due_ports(s, "c" * 40), {"final": a})           # a retired record is not ported
+        self.assertEqual((b["status"], rfqueue.standing(s, PIN)), ("retired", {"final": a, "every": a}))
+        self.assertEqual(rfqueue.due_ports(s, "c" * 40), {"final": a, "every": a})   # a retired record is not ported
         self.assertTrue(rfqueue.retire(a, "every", "t", "x"))
         self.assertEqual((a["status"], a["retired_in"].keys() == {"every"}), ("record", True))
-        self.assertEqual(rfqueue.standing(s, PIN), {"final": a, "every": None})
+        self.assertEqual(rfqueue.standing(s, PIN), {"final": a, "every": None})     # every record of it retired
+        self.assertEqual(rfqueue.due_ports(s, "c" * 40), {"final": a})
         self.assertEqual([e["id"] for e in rfqueue.records(s, "every")], [b["id"], a["id"]])
         self.assertEqual([e["id"] for e in rfqueue.records(s, "final")], [a["id"]])
         self.assertTrue(rfqueue.retire(a, "final", "t", "x"))
         self.assertEqual(a["status"], "retired")
-        # the decision: per track, against that track's standing record; one score S, two eligibilities
-        both = {"S": 10.0, "tracks": {"final": "S", "every": "S"}}
+        # the decision: per track, against that track's standing record, each with its own score
+        both = {"S": 10.0, "S_every": 10.0, "tracks": {"final": "S", "every": "S_every"}}
         ra = dict(a, status="record", retired_in={}, record_in=["final", "every"], score=both)
         rf = dict(b, status="record", retired_in={}, record_in=["final"], score={"S": 8.0, "tracks": {"final": "S"}})
         d = decide(V6(S=9.0), OK, PIN, {"final": ra, "every": ra}, 1)
         self.assertEqual((d["status"], d["took"], d["record_of"]), ("record", ["final", "every"], {"final": ra["id"], "every": ra["id"]}))
+        d = decide(V6(S=9.0, S_every=9.9), OK, PIN, {"final": ra, "every": ra}, 1)   # a large intermediate proof
+        self.assertEqual((d["status"], d["took"], d["against"]["every"]["S"]), ("record", ["final"], 9.9))
+        self.assertEqual(common.track_scores(d["score"]), {"final": 9.0, "every": 9.9})
         d = decide(V6(S=9.0, every=False), OK, PIN, {"final": ra, "every": ra}, 1)   # eligible for final only
         self.assertEqual((d["status"], d["took"], d["against"]["every"]), ("record", ["final"], None))
         self.assertIn("not scored in every: output 2 rejected by acc", d["reasons"])
@@ -346,8 +444,10 @@ class Queue(unittest.TestCase):
     def test_score_sanitiser_keeps_the_tracks(self):
         """`tracks` and the fields it names survive the sanitiser whatever the number and order of the
         other keys: 60 filler keys in front, and a v6 score (core_score.json: S, P_total_s,
-        size_factor, final_pi_bytes, tracks and diagnostics, made-up numbers; replace it with the
-        core's mock smoke once the core computes this score)."""
+        size_factor, final_pi_bytes, S_every, size_factor_every, max_pi_bytes, pass_totals_s,
+        median_pass, tracks and diagnostics at M = 16, n = 2^18, the size factors the proof sizes
+        in bytes, made-up numbers;
+        replace it with the core's mock smoke once the core computes this score)."""
         from decide import clean_score
         import os
         raw = {f"filler_{k:02d}": float(k) for k in range(60)}
@@ -359,7 +459,7 @@ class Queue(unittest.TestCase):
         with open(os.path.join(os.path.dirname(__file__), "core_score.json")) as f:
             core = json.load(f)
         self.assertEqual(clean_score(core), core)
-        self.assertEqual(common.track_scores(clean_score(core)), {"final": core["S"], "every": core["S"]})
+        self.assertEqual(common.track_scores(clean_score(core)), {"final": core["S"], "every": core["S_every"]})
         self.assertIsNone(clean_score(None))
 
     def test_score_fields(self):
@@ -482,6 +582,9 @@ class Decide(unittest.TestCase):
             self.assertEqual(decide(res, dict(OK, record_ok=False), PIN, self.recs, 1)["status"], "unranked")
         self.assertEqual(decide(R("REJECT"), OK, PIN, self.recs, 1)["status"], "rejected")
         self.assertEqual(decide(R("ERROR"), OK, PIN, self.recs, 1)["status"], "queued")
+        d = decide(R("ERROR", organiser_error="malformed"), OK, PIN, self.recs, common.MAX_ATTEMPTS)
+        self.assertEqual((d["status"], d["requeue"], d["organiser_error"]), ("queued", True, "malformed"))
+        self.assertTrue(any("a malformed stream record" in r and "does not count as an attempt" in r for r in d["reasons"]))
         for k in ("duel", "duel_now", "wins", "record_failed", "retire_record", "confirm_retry", "duel_retry", "cpu"):
             self.assertNotIn(k, d)
 
@@ -500,26 +603,87 @@ class Decide(unittest.TestCase):
         c = confirmed(first, decide(V6(S=9.0, every=False), OK, PIN, self.recs, 1))      # confirmed in final only
         self.assertEqual((c["status"], c["took"]), ("record", ["final"]))
         self.assertIn("not confirmed in every", c["reasons"][0])
-        for d2, why in ((decide(R(S=9.9), OK, PIN, self.recs, 1), "does not beat"),
-                        (decide(R("REJECT"), OK, PIN, self.recs, 1), "verdict is REJECT"),
-                        (decide(R(comparable=False), dict(OK, record_ok=False), PIN, self.recs, 1), "unranked")):
+        # not confirmed: accepted if the confirmation is an ACCEPT that does not beat the record; else
+        # the entry's status is the confirmation's (a REJECT is rejected, an unranked ACCEPT unranked)
+        for d2, why, status in ((decide(R(S=9.9), OK, PIN, self.recs, 1), "does not beat", "accepted"),
+                                (decide(R("REJECT"), OK, PIN, self.recs, 1), "verdict is REJECT", "rejected"),
+                                (decide(R("PROVISIONAL"), OK, PIN, self.recs, 1), "PROVISIONAL", "provisional"),
+                                (decide(R(comparable=False), dict(OK, record_ok=False), PIN, self.recs, 1), "unranked",
+                                 "unranked")):
             c = confirmed(first, d2)
-            self.assertEqual((c["status"], c["took"], c["record_of"]), ("accepted", [], {"final": None, "every": None}))
+            self.assertEqual((c["status"], c["took"], c["record_of"]), (status, [], {"final": None, "every": None}))
             self.assertIn(why, c["reasons"][0])
-        self.assertEqual(common.track_scores(confirmed(first, decide(R(S=9.9), OK, PIN, self.recs, 1))["score"])["final"], 9.9)
-        self.assertEqual(common.track_scores(confirmed(first, decide(R("REJECT"), OK, PIN, self.recs, 1))["score"])["final"], 9.0)
+        c = confirmed(first, decide(R(S=9.9), OK, PIN, self.recs, 1))
+        self.assertEqual((common.track_scores(c["score"])["final"], c["score_run"], c["against"]["final"]["S"]),
+                         (9.9, "confirmation", 9.9))                     # the worse run's score and comparison
+        rej = decide(R("REJECT", score=None), OK, PIN, self.recs, 1)
+        c = confirmed(first, rej)
+        self.assertEqual((c["score"], c["score_run"]), (None, "confirmation"))     # the REJECT's (no score)
+        c = confirmed(first, decide(R(S=9.95), OK, PIN, self.recs, 1))
+        self.assertEqual(c["score_run"], "confirmation")
+        c = confirmed(candidate(decide(R(S=9.97), OK, PIN, {}, 1), PIN, "u"), decide(R(S=9.9), OK, PIN, self.recs, 1))
+        self.assertEqual(c["status"], "accepted")
         self.assertIsNone(confirmed(first, decide(R("ERROR"), OK, PIN, self.recs, 1)))             # retried, still pending
         self.assertIsNone(confirmed(first, decide(R(), {"attested": False}, PIN, self.recs, 1)))
+        # S and S_every order the two runs differently: each track keeps its own worse run (scores
+        # in s·B at this season's scale, against a record of 10^7 s·B)
+        big = dict(self.rec, score=V6(S=10.0e6)["score"])
+        big = {"final": big, "every": big}
+        first = candidate(decide(V6(S=9.0e6, S_every=9.4e6), OK, PIN, big, 1), PIN, "https://run/1")
+        c = confirmed(first, decide(V6(S=9.1e6, S_every=9.3e6), OK, PIN, big, 1))
+        self.assertEqual((c["status"], c["took"], common.track_scores(c["score"])),
+                         ("record", ["final", "every"], {"final": 9.1e6, "every": 9.4e6}))
+        self.assertEqual((c["against"]["final"]["S"], c["against"]["every"]["S"]), (9.1e6, 9.4e6))
+        self.assertEqual(c["score"]["tracks"], {"final": "S", "every": "S_every"})
+        # every part shown with a track's score is of the run that gave it: the score object is the
+        # lead track's (final) worse run, whole; every's fields are the first run's, in by_track
+        self.assertEqual((c["score_run"], c["score"]["P_total_s"], c["score"]["S"]), ("confirmation", 9.1e6 / F6, 9.1e6))
+        self.assertEqual(set(c["score"]["by_track"]), {"every"})
+        bt = c["score"]["by_track"]["every"]
+        self.assertEqual((bt["S_every"], bt["P_total_s"], c["score"]["S_every"]), (9.4e6, 9.0e6 / F6, 9.4e6))
+        self.assertNotIn("tracks", bt)
+        c2 = confirmed(first, decide(V6(S=9.2e6, S_every=9.5e6), OK, PIN, big, 1))     # one run worse in both
+        self.assertEqual((c2["score_run"], "by_track" in c2["score"], c2["score"]["S_every"]), ("confirmation", False, 9.5e6))
+        self.assertIn("final: 9000000 s*B, then 9100000 s*B; every: 9400000 s*B, then 9300000 s*B", c["reasons"][0])
         none = candidate(decide(R(S=50.0), OK, PIN, {}, 1), PIN, "u")                     # no record stood: any ACCEPT confirms
         self.assertEqual(confirmed(none, decide(R(S=60.0), OK, PIN, {}, 1))["status"], "record")
 
     def test_cache_retry(self):
-        from decide import cache_retry
+        """A REJECT that restored record modules is retried without the cache only when the cache can
+        have caused it: at the certificate or at a badge check (`reject_stage`); a result without
+        `reject_stage` (an earlier core) is retried as before."""
+        from decide import cache_check, cache_check_stands, cache_retry, reject_stage
         used = {"certificate": {"record_cache": {"restored": ["M"]}}}
-        self.assertTrue(cache_retry(dict(R("REJECT"), **used), {}))
-        self.assertFalse(cache_retry(dict(R("REJECT"), **used), {"record_cache": False}))
-        self.assertFalse(cache_retry(dict(R("ACCEPT"), **used), {}))
-        self.assertFalse(cache_retry(R("REJECT"), {}))
+        legacy = lambda **kw: dict(R("REJECT", score=None), **used, **kw)  # noqa: E731  (an earlier core: no stage, no v6 marker)
+        self.assertTrue(cache_retry(legacy(), {}, True))
+        self.assertFalse(cache_retry(legacy(), {}, False))                       # an unverified result: never
+        self.assertFalse(cache_retry(legacy(), {"record_cache": False}, True))
+        self.assertFalse(cache_retry(dict(R("ACCEPT"), **used), {}, True))
+        self.assertFalse(cache_retry(R("REJECT", score=None), {}, True))
+        for stage in ("certificate", "check"):
+            self.assertTrue(cache_retry(legacy(reject_stage=stage), {}, True), stage)
+            self.assertFalse(cache_retry(dict(R("REJECT", score=None), reject_stage=stage), {}, True), stage)   # nothing restored
+        for stage in ("prover", "request", "timed-pass", "stream-cap", None, "other"):
+            self.assertFalse(cache_retry(legacy(reject_stage=stage), {}, True), stage)
+        # this rules' core without a stage (a REJECT path it forgot): final, unless the certificate was rejected
+        for marker in ({"stream": {"leaf_data": {"xof": "shake256"}}}, {"score": {"S": 1.0, "pass_totals_s": [1.0]}},
+                       {"score": {"S": 1.0, "S_every": 1.1, "tracks": {"final": "S", "every": "S_every"}}}):
+            self.assertIsNone(reject_stage(dict(R("REJECT"), **marker)))
+            self.assertFalse(cache_retry(legacy(**marker), {}, True), marker)
+            rej = dict(legacy(**marker), certificate={"status": "reject", "record_cache": {"restored": ["M"]}})
+            self.assertEqual(reject_stage(rej), "certificate")
+            self.assertTrue(cache_retry(rej, {}, True))
+        self.assertEqual(reject_stage(legacy()), "legacy")
+        # a `check` REJECT keeps its badge for the retry; an identical badge after the clean rebuild: it stands
+        b = {"verify": "a" * 64}
+        first = dict(legacy(reject_stage="check"), certificate={"record_cache": {"restored": ["M"]}, "badge_sha256": b})
+        pend = cache_check(first, "u1", ["r"])
+        self.assertEqual(pend, {"run_url": "u1", "badge_sha256": b, "reasons": ["r"]})
+        self.assertIsNone(cache_check(legacy(reject_stage="certificate"), "u1", []))
+        self.assertTrue(cache_check_stands(pend, {"certificate": {"badge_sha256": dict(b)}}))
+        self.assertFalse(cache_check_stands(pend, {"certificate": {"badge_sha256": {"verify": "b" * 64}}}))
+        self.assertFalse(cache_check_stands(pend, {"certificate": {}}))
+        self.assertFalse(cache_check_stands({"badge_sha256": None}, {"certificate": {"badge_sha256": b}}))
 
     def test_untrusted_fields_cleaned(self):
         d = decide(R(reasons=["x" * 1000, "\u202eevil\nline"] * 30,
@@ -544,10 +708,48 @@ class Render(unittest.TestCase):
         e = {"status": "record", "verdict": "ACCEPT", "record_in": ["every"],
              "score": {"S": 1.23456, "tracks": {"final": "S", "every": "S"}}}
         self.assertEqual(render.status_for(e), ("success", "ACCEPT: new record (every), S = 1.2346 s (final, every)"))
+        e = {"status": "record", "verdict": "ACCEPT", "record_in": ["final", "every"],      # this season's rule
+             "score": {"S": 4358812.471, "S_every": 5173251.074, "P_total_s": 15.592, "size_factor": 279552,
+                       "final_pi_bytes": 279552, "tracks": {"final": "S", "every": "S_every"}}}
+        self.assertEqual(render.status_for(e), ("success", "ACCEPT: new record (final, every), S = 4358812 s*B "
+                                                "(final), S_every = 5173251 s*B (every)"))
+        e["score"]["size_ref"] = 524288                                     # an earlier v6 season's exponential factor
+        self.assertIn("S = 4358812.4710 s (final)", render.status_for(e)[1])
+        e = {"status": "accepted", "verdict": "ACCEPT", "score": {"S": 1.2346, "tracks": {"final": "S", "every": "S"}}}
+        self.assertEqual(render.status_for(e)[1], "ACCEPT: accepted (did not beat the record), S = 1.2346 s (final, every)")
         e = {"status": "accepted", "verdict": "ACCEPT", "score": {"S": 2.0}}     # an earlier season's result
         self.assertEqual(render.status_for(e)[1], "ACCEPT: accepted (did not beat the record), S = 2.0000 s (sum)")
         self.assertLessEqual(len(render.status_for({"status": "x" * 500})[1]), 140)
 
+    def test_status_fits_at_large_scores(self):
+        """At S = 1.1e9 s·B (a slow prover with a large proof) every status with scores keeps its
+        whole text within GitHub's 140 characters: nothing is cut."""
+        sc = {"S": 1.1e9, "S_every": 1.34e9, "P_total_s": 2200.0, "size_factor": 500000, "final_pi_bytes": 500000,
+              "max_pi_bytes": 609090, "size_factor_every": 609090, "tracks": {"final": "S", "every": "S_every"}}
+        cases = [{"status": "record", "verdict": "ACCEPT", "record_in": ["final", "every"], "score": sc}]
+        cases += [{"status": st, "verdict": "ACCEPT", "score": sc} for st in ("accepted", "unranked")]
+        cases += [{"status": "provisional", "verdict": "PROVISIONAL", "score": sc}]
+        cases += [{"status": st, "verdict": "ACCEPT", "score": None, "confirm": {"took": ["final", "every"], "score": sc}}
+                  for st in ("queued", "running", "error")]
+        for e in cases:
+            d = render.status_for(e)[1]
+            self.assertLessEqual(len(d), 140, d)
+            self.assertTrue(d.endswith("S = 1100000000 s*B (final), S_every = 1340000000 s*B (every)"), d)
+        self.assertEqual(render.status_for(cases[-1])[1], "record candidate (final, every), confirmation waiting on the "
+                         "organiser, S = 1100000000 s*B (final), S_every = 1340000000 s*B (every)")
+
+    def test_score_text(self):
+        """s·B scores are whole numbers, an earlier season's seconds keep four decimals, everywhere
+        the bot prints a score (statuses, reasons, comments, notes.md)."""
+        new = {"S": 4358812.471, "size_factor": 279552, "final_pi_bytes": 279552, "tracks": {"final": "S"}}
+        self.assertEqual((common.score_text(4358812.471, new), common.score_text(4358812.5, new),
+                          common.score_text(None, new)), ("4358812", "4358812", "-"))
+        for old in ({"S": 1.23456, "size_factor": 1.25, "final_pi_bytes": 168800, "size_ref": 524288},
+                    {"S": 1.23456, "tracks": {"final": "S", "every": "S"}}, None):
+            self.assertEqual((common.score_text(1.23456, old), common.unit_text(old)), ("1.2346", "s"))
+        rec = {"id": "pr1-aaaaaaaaaaaa", "score": dict(new, S=4500000.0)}
+        self.assertEqual(decide_mod.against(4358812.471, rec, "final")[1],
+                         "final: 4358812 s*B beats the record pr1-aaaaaaaaaaaa (4500000 s*B) by 3.1%")
     def test_comment_has_no_live_markdown_from_reasons(self):
         e = {"id": "pr1-aaaaaaaaaaaa", "status": "rejected", "verdict": "REJECT", "reasons": ["`](http://evil) @owner"],
              "verified": True}
@@ -555,14 +757,33 @@ class Render(unittest.TestCase):
         self.assertIn("- `'](http://evil) @owner`", body)
         self.assertNotIn("``", body)
         e = {"id": "pr2-aaaaaaaaaaaa", "status": "accepted", "verdict": "ACCEPT", "verified": True,
-             "score": {"S": 9.9, "P_total_s": 7.92, "size_factor": 1.25, "final_pi_bytes": 337500, "M": 8, "tracks": {"final": "S"}},
-             "against": {"final": {"record": "pr1-aaaaaaaaaaaa", "S": 9.9, "S_record": 10.0, "gain": 0.01, "beats": False},
+             "score": {"S": 1345410.0, "P_total_s": 7.92, "size_factor": 169875, "final_pi_bytes": 169875, "M": 16,
+                       "pass_totals_s": [7.95, 7.92, 7.9], "median_pass": 2, "tracks": {"final": "S"}},
+             "against": {"final": {"record": "pr1-aaaaaaaaaaaa", "S": 1345410.0, "S_record": 1359000.0, "gain": 0.01, "beats": False},
                          "every": None}}
         body = render.publish_comment(e, "https://run")
-        self.assertIn("Against the final record `pr1-aaaaaaaaaaaa`: 9.9000 s against 10.0000 s, gain +1.0%", body)
-        self.assertIn("S = 9.9000 s = P_total 7.9200 s × size factor 1.2500 (2^(|π|/1 MiB), final proof 337500 bytes), M = 8", body)
+        self.assertIn("Against the final record `pr1-aaaaaaaaaaaa`: 1345410 s·B against 1359000 s·B, gain +1.0%", body)
+        self.assertIn("S = 1345410 s·B = P_total 7.9200 s × final proof 169875 bytes (final: P_total · |π_M|), "
+                      "M = 16\n", body)
+        self.assertIn("\nP_total: pass 2's total, the median of the timed passes' totals 7.9500 s, 7.9200 s, 7.9000 s\n", body)
+        self.assertNotIn("S_every", body)                                   # final only
         self.assertIn("Tracks: final (not every: the reasons below say why)", body)
+        e["score"].update(S_every=1779624.0, size_factor_every=224700, max_pi_bytes=224700, tracks={"final": "S", "every": "S_every"})
+        body = render.publish_comment(e, "https://run")
+        self.assertIn("\nS_every = 1779624 s·B = P_total × largest proof 224700 bytes (every: P_total · max |π_i|)\n", body)
+        self.assertIn("Tracks: final, every\n", body)
         self.assertNotIn("duel", body.lower())
+        # an earlier v6 season's result (`size_ref`): its exponential factor, in seconds
+        e["score"] = {"S": 9.9, "P_total_s": 7.92, "size_factor": 1.25, "final_pi_bytes": 168800, "M": 16, "S_every": 10.89,
+                      "size_factor_every": 1.375, "max_pi_bytes": 240900, "pass_totals_s": [7.95, 7.92, 7.9], "median_pass": 2,
+                      "size_ref": 524288, "tracks": {"final": "S", "every": "S_every"}}
+        e["against"] = {"final": {"record": "pr1-aaaaaaaaaaaa", "S": 9.9, "S_record": 10.0, "gain": 0.01, "beats": False}}
+        body = render.publish_comment(e, "https://run")
+        self.assertIn("Against the final record `pr1-aaaaaaaaaaaa`: 9.9000 s against 10.0000 s, gain +1.0%", body)
+        self.assertIn("S = 9.9000 s = P_total 7.9200 s × size factor 1.2500 (final: 2^(|π_M|/512 KiB), final proof "
+                      "168800 bytes), M = 16\n", body)
+        self.assertIn("\nS_every = 10.8900 s = P_total × size factor 1.3750 (every: 2^(max |π_i|/512 KiB), largest "
+                      "proof 240900 bytes)\n", body)
 
     def test_notes_md_fence(self):
         st = rfqueue.empty("o/r", PIN)
@@ -572,6 +793,10 @@ class Render(unittest.TestCase):
         body = {"notes/1.md": "~~~~~~\n## pr9-000000000000 · fake · @owner · record\n".encode(), "notes/2.md": b"two",
                 "notes/3.md": b"three"}
         md = render.notes_md(st, body.get, "o/r").decode()
+        self.assertIn(" · record · S = 2.0000 s (sum) · [#2]", md)            # each score in its unit
+        st["submissions"][1]["score"] = {"S": 4358812.471, "size_factor": 279552, "final_pi_bytes": 279552,
+                                         "tracks": {"final": "S"}}
+        self.assertIn(" · record · S = 4358812 s·B (final) · [#2]", render.notes_md(st, body.get, "o/r").decode())
         self.assertLess(md.index("pr2-"), md.index("pr1-"))
         self.assertNotIn("three", md)
         self.assertIn("~~~~~~~markdown", md)       # a fence longer than any in the notes
@@ -846,6 +1071,66 @@ class Workflows(unittest.TestCase):
             self.assertNotEqual(wfcheck.check_text("esc", "on: workflow_dispatch\njobs:\n  a:\n    runs-on: rf-light\n"
                                                            "    steps:\n      - " + esc + "\n"), [], esc)
 
+    def test_no_workflow_text_stalls_the_check(self):
+        """The heavy review's redos.py: KEY_RE was quadratic in a long line without a colon (8 lines of
+        64 KiB took 71 s). Every pattern is linear now, a line above 4 KiB is refused before any
+        pattern reads it, and the bot runs the check in a subprocess with a time limit."""
+        import os
+        import tempfile
+        import time
+        import wfcheck
+        line = "a" + " " * 16000 + "b"
+        t = time.monotonic()
+        self.assertIsNone(wfcheck.KEY_RE.match(line))
+        self.assertIsNotNone(wfcheck.KEY_RE.match("key   : value"))
+        self.assertEqual(wfcheck._scalar(wfcheck.KEY_RE.match("key   : value").group(1)), "key")
+        self.assertEqual(wfcheck._scalar(wfcheck.KEY_RE.match('"k" : v').group(1)), "k")
+        big = "on: workflow_dispatch\njobs:\n" + ("a" + " " * 65000 + "b\n") * 8
+        self.assertIn("more than 4096 bytes", wfcheck.check_text("x.yml", big)[0])
+        head = "on: workflow_dispatch\njobs:\n  a:\n    runs-on: rf-light\n    steps:\n      - run: |\n"
+        worst = ["on: workflow_dispatch\njobs:\n" + ("  a" + " " * 4000 + "b\n") * 100,
+                 head + ("          " + "git " * 1000 + "\n") * 100,
+                 head + ("          " + "${{" * 1300 + "\n") * 100,
+                 head + ("          " + "| " * 2000 + "\n") * 100]
+        for text in worst:
+            wfcheck.check_text("x.yml", text)
+        self.assertLess(time.monotonic() - t, 10)
+        self.assertEqual(wfcheck.expressions("a ${{ x }} b ${{ y }}${{ z"), [" x ", " y "])
+        self.assertTrue(wfcheck.run_makes_code("git fetch x && git \\\ncheckout FETCH_HEAD"))
+        self.assertFalse(wfcheck.run_makes_code("git fetch origin refs/pull/1/head\necho checkout"))
+        # in a subprocess with a time limit: a timeout is a problem, never a pass
+        d = tempfile.mkdtemp(prefix="rf-wf-")
+        self.addCleanup(__import__("shutil").rmtree, d, True)
+        os.makedirs(os.path.join(d, ".github", "workflows"))
+        with open(os.path.join(d, ".github", "workflows", "ok.yml"), "w") as f:
+            f.write(ALLOWED["pull_request on GitHub-hosted"])
+        g = lambda *a: subprocess.run(["git", "-C", d, *a], capture_output=True, check=True,  # noqa: E731
+                                      env={"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
+                                           "GIT_COMMITTER_EMAIL": "t@t", "PATH": os.environ["PATH"], "HOME": d})
+        g("init", "-q")
+        g("add", "-A")
+        g("commit", "-q", "-m", "x")
+        gd = os.path.join(d, ".git")
+        self.assertEqual(wfcheck.check_git_limited(gd, "HEAD"), wfcheck.check_git(gd, "HEAD"))
+        self.assertEqual(wfcheck.check_git_limited(gd, "HEAD"), [])
+        self.assertIn("did not finish within", wfcheck.check_git_limited(gd, "HEAD", timeout=0.001)[0])
+        self.assertIn("cannot list", wfcheck.check_git_limited(gd, "0" * 40)[0])
+
+    def test_intake_runs_only_for_events_that_matter(self):
+        """intake.yml: an `edited` event runs only when the base changed, a label event only for
+        `hold`, and one intake per pull request runs at a time (the newest event's)."""
+        import os
+        with open(os.path.join(os.path.dirname(__file__), "..", "..", "workflows", "intake.yml")) as f:
+            text = f.read()
+        import wfcheck
+        job = wfcheck.parse(text)["jobs"]["intake"]
+        cond = " ".join(job["if"].split())
+        for part in ("github.event.action == 'edited' && github.event.changes.base != null",
+                     "github.event.label.name == 'hold'", "github.ref == 'refs/heads/main'"):
+            self.assertIn(part, cond)
+        self.assertEqual(job["concurrency"], {"group": "intake-${{ github.event.pull_request.number || inputs.pr }}",
+                                              "cancel-in-progress": "true"})
+
     def test_size_caps(self):
         """Workflows above 64 KiB per file or 512 KiB in all are refused before any parse."""
         import os
@@ -953,6 +1238,53 @@ class Attest(unittest.TestCase):
         v = attest.verify("p", self.res(job="o/r/actions/runs/77/attempts/2"), self.repo, self.rid, "core",
                           run=self.fake(uri="https://github.com/o/r/actions/runs/77/attempts/2"), min_attempt=2)
         self.assertTrue(v["attested"])
+
+
+# The site's site/common.js, loaded in node with the few browser globals it touches at load time.
+SITE_JS = r"""
+const [file, cases] = [process.argv[1], JSON.parse(process.argv[2])];
+global.window = { RF_CONFIG: { REPO: 'o/r', CORE_REPO: 'o/c', DATA_BASE: '', MAIN_BASE: '', FIXTURES: {} } };
+global.location = { search: '' };
+global.document = { addEventListener() {} };
+require(file);
+const RF = window.RF;
+console.log(JSON.stringify(cases.map(sc => {
+  const p = RF.pricedBy(RF.TRACKS[0], sc);
+  return [RF.productRule(sc), p.unit, p.formula, RF.fmtS(sc && sc.S, p.unit)];
+})));
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "node is not installed")
+class Site(unittest.TestCase):
+    def test_site_prices_like_the_bot(self):
+        """The site's `productRule` is the bot's `common.product_rule`: a result without a numeric
+        `size_factor` (the first v6 rules, an earlier season's) is in seconds, never s·B, and shows
+        no product formula; s·B scores are whole numbers with separators."""
+        cases = [{"S": 1.2346, "tracks": {"final": "S", "every": "S"}},
+                 {"S": 4358812.471, "P_total_s": 15.592, "size_factor": 279552, "final_pi_bytes": 279552,
+                  "tracks": {"final": "S"}},
+                 {"S": 30000.04, "size_factor": 1000, "final_pi_bytes": 1000, "tracks": {"final": "S"}},
+                 {"S": 9.9, "size_factor": 1.25, "final_pi_bytes": 168800, "size_ref": 524288, "tracks": {"final": "S"}},
+                 {"S": 9.9, "size_factor": 1.25, "final_pi_bytes": 168800, "tracks": {"final": "S"}},
+                 {"S": 9.9, "size_factor": "279552", "final_pi_bytes": 279552, "tracks": {"final": "S"}},
+                 {"S": 9.9, "size_factor": 279552, "tracks": {"final": "S"}},
+                 None]
+        site = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))),
+                            "site", "common.js")
+        out = subprocess.run(["node", "-e", SITE_JS, site, json.dumps(cases)], capture_output=True, text=True, timeout=60)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        got = json.loads(out.stdout)
+        for sc, (rule, unit, formula, shown) in zip(cases, got):
+            self.assertEqual(rule, common.product_rule(sc), sc)
+            if sc is None:
+                continue                                    # no score: nothing is priced
+            self.assertEqual(unit, common.unit_text(sc), sc)
+            if not rule:
+                self.assertNotIn("|\u03c0\u2081\u2086|", formula.replace("2^(|\u03c0\u2081\u2086| /", ""), sc)
+        self.assertEqual([g[3] for g in got[:3]], ["1.235", "4,358,812", "30,000"])
+        self.assertEqual((got[0][1], got[0][2]), ("s", "S = P_total \u00b7 2^(|\u03c0\u2081\u2086| / 512 KiB)"))
+        self.assertEqual((got[1][1], got[1][2]), ("s\u00b7B", "S = P_total \u00b7 |\u03c0\u2081\u2086|"))
 
 
 if __name__ == "__main__":

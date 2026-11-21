@@ -14,22 +14,27 @@ STATUS_CONTEXT = "recursion.fast/evaluation"
 # MARGIN is the owner's choice (2 %), not derived from the noise. For reference: σ, the relative
 # run-to-run spread of S for one entry on the evaluation machine with a fixed stream, was
 # measured at 1.75 % over 10 runs at the smoke shape (the core's harness/smoke.toml; mostly per-step
-# process overhead, likely smaller at the season shape) under the earlier rules, with one timed
-# pass (the v6 rules take each step's minimum of two timed passes, which should lower it). S and
-# S_record are two independent runs, so two runs of one entry differ by about √2·σ ≈ 2.5 %: a
-# near-copy of the record can beat it by noise alone (at σ = 1.75 %, in roughly one attempt in
-# five). A noise-proof margin would be 3·√2·σ ≈ 7.4 %.
+# process overhead) under the earlier rules, with one timed pass. The v6 rules take the median of
+# three timed passes' totals over 16 steps; from one step's measured spread (about 0.9 %) that
+# median varies by about 0.15 % [model], and the core estimates σ ≈ 0.2–0.5 % per evaluation
+# [estimate], unmeasured at the season's shape. S and S_record are two independent runs, so two
+# runs of one entry differ by about √2·σ (≈ 2.5 % at σ = 1.75 %), and a noise-proof single-run margin
+# would be 3·√2·σ ≈ 7.4 % there; at σ ≈ 0.5 % the 2 % margin is about 3·√2·σ.
 # The defences are elsewhere: a record candidate is confirmed by a second run of the same commit that
-# must also beat the record, and the record keeps the worse score (decide.confirmed); a byte copy of
-# an evaluated root is invalid, a record's prover binary never takes the record again, and the owner
-# retires a record won by noise (`retire`). The owner may
+# must also beat the record, and the record keeps the worse run (decide.confirmed); measured by a
+# Monte Carlo of that rule, a near-copy of the record (the same speed) is still crowned in about
+# 15.9 % of attempts at σ = 1.75 %, 4.1 % at σ = 1 % and 0.03 % at σ = 0.5 % (comparing with the mean
+# of the record's two runs would give 5.5 % at σ = 1.75 %: the owner's choice, README.md). A copy of
+# an evaluated root or of its prover/ is invalid, a record's prover binary never takes the record
+# again (rfqueue.prover_owner), and the owner retires a record won by noise (`retire`). The owner may
 # change MARGIN between seasons (a stored state with another margin is rewritten at once,
 # rfqueue.load; README.md, "Changing the margin", lists every place that states it).
 MARGIN = 0.02
 # The tracks (the core's AGENTS.md §7, §8): one evaluation, one score `S`, two eligibilities, each
 # track with its own records. `final`: only the final proof is verified; `every`: every proof is.
 # A result's `score.tracks` names, per track, the field of `score` that is its score
-# ({"final": "S", "every": "S"}; `every` is absent when the entry is eligible for `final` only, and
+# ({"final": "S", "every": "S_every"}: `final` prices the final proof's size, `every` the largest
+# proof's; `every` is absent when the entry is eligible for `final` only, and
 # `tracks_reason` says why). A score without `tracks` (a result of an earlier season) has the sum of
 # that season alone, `S` (LEGACY_TRACKS). The record rule runs once per track that the result names,
 # with the one MARGIN. TRACKS is the order the bot lists them in, the tracks `record` always names
@@ -44,27 +49,36 @@ MAX_ATTEMPTS = 2          # an organiser-side ERROR is evaluated once more, then
 # `drift` is among them although c_P is sampled during the entry's stream: the sandbox leaves no
 # entry process alive, so only a thermal effect could carry over (accepted and documented). These are
 # the organiser's alone: a run that ends in one never counts against the author (it does not move
-# the author back in the fair order). A `fingerprint` error (the machine is not the season's) or a
+# the author back in the fair order). A `fingerprint` error (the machine is not the season's), a
 # `lengths` error (the stream's shape, M and n, was not the season's: an organiser bug, the
-# same at every retry at one pin) does not even use up the entry's retry; the others are retried
-# once (MAX_ATTEMPTS). `attestation`: an unverified result (the bot's).
-UNCOUNTED_ERRORS = ("fingerprint", "lengths", "drift", "setup", "cache", "attestation")
-ORGANISER_ERRORS = UNCOUNTED_ERRORS + ("harness",)
-PAUSING_ERRORS = ("fingerprint", "lengths")     # a retry cannot clear them: re-queued in place without an attempt
+# same at every retry at one pin) or a `malformed` error (a step record whose timed times are not
+# the season's `timed_runs` numbers, so the score cannot be computed: the runner's fault, likewise
+# the same at every retry) does not even use up the entry's retry; the others are retried once
+# (MAX_ATTEMPTS). `attestation`: an unverified result (the bot's). `harness` (the certificate job
+# ended without a certificate) and `overhead` (a benchmark part killed at the job's PART_S that the
+# entry's own clock does not explain: the runner's own work past runner_budget_s, which an entry
+# can lengthen) are named but count in the fair order as an unnamed ERROR does (from the entry's
+# second, `rfqueue.settle_run`), and so does a run with no result at all (flows.publish): an entry
+# might provoke any of them. Both are retried once.
+UNCOUNTED_ERRORS = ("fingerprint", "lengths", "malformed", "drift", "setup", "cache", "attestation")
+ORGANISER_ERRORS = UNCOUNTED_ERRORS + ("harness", "overhead")
+PAUSING_ERRORS = ("fingerprint", "lengths", "malformed")     # a retry cannot clear them: re-queued in place without an attempt
 # The pause (AGENTS.md §9): every run that ends on the organiser's side (any ERROR, named or not, a
 # result whose provenance fails, no result at all, a run reaped after it died) joins the error
 # streak. Only a clean verdict (a verified ACCEPT, PROVISIONAL or REJECT) whose stream ran on the
 # season's machine clears it; a REJECT at the certificate or inside the stream never reached the
 # benchmark-side checks and leaves it as it is. When PAUSE_AFTER errors of the streak count, the
 # queue pauses and one issue is opened for the owner. An entry cannot cause an ENTRY_PROOF error
-# (decided before any entry code runs, or by jobs that never fetch the entry; `attestation` here is a
-# result that exists but whose provenance fails), so each one counts. The others (drift, measured
-# during the entry's stream; harness, the certificate job, which builds the entry, ended without a
+# (decided before any entry code runs, or by jobs that never fetch the entry; `malformed` is the
+# runner's own record of the stream, which no entry writes; `attestation` here is a result that
+# exists but whose provenance fails), so each one counts. The others (drift, measured
+# during the entry's stream; overhead, the runner's own work past its budget, which an entry can
+# lengthen; harness, the certificate job, which builds the entry, ended without a
 # certificate; no result at all; an unnamed ERROR; a reaped run) might be provoked by an entry, so
 # they count once per author in the streak: no author can pause the queue alone, and an outage still
 # pauses it at the second author's entry. An error more than STREAK_WINDOW_S before the streak's
 # newest no longer counts, so unrelated errors weeks apart do not add up to a pause.
-ENTRY_PROOF_ERRORS = ("fingerprint", "lengths", "setup", "cache", "attestation")
+ENTRY_PROOF_ERRORS = ("fingerprint", "lengths", "malformed", "setup", "cache", "attestation")
 PAUSE_AFTER = 2
 STREAK_CAP = 32           # the streak's newest runs kept in the state
 STREAK_WINDOW_S = 7 * 24 * 3600
@@ -149,3 +163,33 @@ def score_fields(score):
 def track_scores(score):
     """{track: the positive score in that track} of a result's `score` object (`score_fields`)."""
     return {t: v for t, _f, v in score_fields(score)}
+
+
+# The score's size factor (the core's AGENTS.md §8): this season's is the priced proof's size in
+# bytes itself, S = P_total · |π_M| in `final` and S_every = P_total · max_i |π_i| in `every`
+# (`score.size_factor` = `final_pi_bytes`, `size_factor_every` = `max_pi_bytes`), so a score is in
+# seconds times bytes. An earlier v6 season's was exponential, 2^(|π_M| / size_ref) (the core named
+# `size_ref`), a score in seconds. The record rule compares scores of one pin only, so it never
+# mixes the two.
+def product_rule(score):
+    """Whether a result's size factor is this season's (the proof size in bytes) rather than an
+    earlier v6 season's exponential (`size_ref`): its `size_factor` equals its `final_pi_bytes`."""
+    if not isinstance(score, dict) or "size_ref" in score:
+        return False
+    f, pi = score.get("size_factor"), score.get("final_pi_bytes")
+    return is_num(f) and is_num(pi) and pi > 0 and abs(f - pi) <= 1e-9 * pi
+
+
+def unit_text(score, ascii=False):
+    """The unit of a result's scores: seconds times bytes at this season's rule (`s·B`, `s*B` in
+    ASCII), seconds for an earlier season's (an exponential factor, or none)."""
+    return ("s*B" if ascii else "s·B") if product_rule(score) else "s"
+
+
+def score_text(v, score):
+    """A score `v` as text in the unit of its result's `score`: a whole number of s·B at this
+    season's rule (`4358812`: a fraction of a second-byte says nothing, and statuses stay short),
+    four decimals of seconds at an earlier season's (`1.2346`); `-` when it is not a number."""
+    if not is_num(v):
+        return "-"
+    return f"{v:.0f}" if product_rule(score) else f"{v:.4f}"

@@ -21,7 +21,8 @@ import render
 import rfqueue
 import wfcheck
 from common import ID_RE, LOGIN_RE, PAUSING_ERRORS, MAX_TEXT_BYTES, ROOT_RE, SHA_RE, STATUS_CONTEXT, clean, entry_id, now_iso
-from decide import build_manifest_sha, cache_retry, candidate, confirmed, decide
+from decide import (badge_sha, build_manifest_sha, cache_check, cache_check_stands, cache_retry, candidate, confirmed, decide,
+                    result_prover_keys)
 from gitdata import Changes, Repo
 
 DATA, NOTES_MD = "data", "notes.md"
@@ -29,14 +30,20 @@ ORGANISER = ("admin", "maintain", "write")
 BOT_LOGIN = "github-actions[bot]"
 # descriptions of the bot's statuses after which a head may be admitted again
 READMIT = ("withdrawn", "superseded", "intake failed")
+# the time one sync spends examining heads (sync.yml's job has 30 minutes): past it, the sync writes
+# what it has examined and dispatches the next sync, which goes on where it stopped (every head it
+# recorded is skipped), so no number of slow heads can keep `data` from being written
+SYNC_BUDGET_S = 15 * 60
 
 
 class Ctx:
     """Everything a step needs from its environment."""
 
     def __init__(self, gh, repo, git_url, pin, token=None, run_id="0", run_attempt=1, server="https://github.com",
-                 default_branch="main", clock=None, sleep=time.sleep, verify=None, log=print, bot_login=BOT_LOGIN):
+                 default_branch="main", clock=None, sleep=time.sleep, verify=None, log=print, bot_login=BOT_LOGIN,
+                 monotonic=time.monotonic):
         self.gh, self.repo, self.git_url, self.pin, self.token = gh, repo, git_url, pin, token
+        self.monotonic = monotonic
         self.run_id, self.run_attempt, self.server, self.default_branch = str(run_id), int(run_attempt), server, default_branch
         self.run_url = f"{server}/{repo}/actions/runs/{self.run_id}"
         self.clock, self.sleep, self.verify, self.log, self.bot_login = clock, sleep, verify, log, bot_login
@@ -122,6 +129,13 @@ def examine(ctx, git, pr, st, reserved=()):
         raise RuntimeError(f"refs/pull/{n}/head is {got}, the API says {sha}")
     eid = entry_id(n, sha)
     info = {}
+    # the author is the pull request's opener, and the head must be in the author's own repository:
+    # anyone can open a pull request from another user's public branch, and so be first with a root
+    # that user has not submitted yet (the copy rule's order)
+    head_owner = (((pr.get("head") or {}).get("repo") or {}).get("owner") or {}).get("login")
+    if head_owner != author:
+        reasons.append(f"the head branch is in {clean(head_owner or 'a deleted repository', 40)}'s repository, not the "
+                       f"author's ({clean(author, 40)}): open the pull request from a branch of your own fork")
     if root:
         if root in reserved:
             reasons.append(f"submissions/{root}/ is a directory the organiser keeps on main; choose another root name")
@@ -136,14 +150,14 @@ def examine(ctx, git, pr, st, reserved=()):
              "reasons": [], "run_url": None, "tag": f"rf-source/{eid}",
              "notes": f"notes/{eid}.md" if info.get("notes") else None,
              "readme": f"readme/{eid}.md" if info.get("readme") else None,
-             "record_of": None, "tree": info.get("tree"), "verified": False, "harness_commit": None,
-             "prover_sha256": None}
+             "record_of": None, "tree": info.get("tree"), "prover_tree": info.get("prover_tree"), "verified": False,
+             "harness_commit": None, "prover_sha256": None}
     if files is None or any(str(f.get(k) or "").startswith(".github/") for f in files
                             for k in ("filename", "previous_filename")):
         # main's workflow check on the head's workflows, read as data
-        reasons += [f"workflow check: {p}" for p in wfcheck.check_git(git.dir, sha)][:10]
+        reasons += [f"workflow check: {p}" for p in wfcheck.check_git_limited(git.dir, sha)][:10]
     if not reasons:
-        dup = rfqueue.duplicate_of(st, eid, n, entry["author"], entry["tree"])
+        dup = rfqueue.duplicate_of(st, eid, n, entry["author"], entry["tree"], entry["prover_tree"])
         if dup:
             reasons.append(dup)
     reasons = [clean(r, 300) for r in reasons[:20]]
@@ -213,7 +227,7 @@ def workflow_problems(ctx, git, pr):
     sha = (pr.get("head") or {}).get("sha") or ""
     if not SHA_RE.match(sha) or git.fetch(f"refs/pull/{n}/head") != sha:
         return []                          # it moved: the next event checks the new head
-    return wfcheck.check_git(git.dir, sha)
+    return wfcheck.check_git_limited(git.dir, sha)
 
 
 def intake_failed(ctx, pr_n):
@@ -240,7 +254,7 @@ def sync(ctx):
     st0 = _state(ctx, git.snapshot(DATA))
     reserved = _reserved(git, st0)
     prs = {p["number"]: p for p in ctx.gh.open_prs()}
-    looks, admitted = {}, {}
+    looks, admitted, t0, more = {}, {}, ctx.monotonic(), []
     for n, pr in sorted(prs.items()):
         if (pr.get("base") or {}).get("ref") != ctx.default_branch or pr.get("draft") or "hold" in _labels(pr):
             continue
@@ -251,6 +265,9 @@ def sync(ctx):
         prior = bot_statuses(ctx, sha)
         if old and old["status"] == "invalid" and not (prior and prior[0].get("description") == "queued"):
             continue                       # an invalid head stays invalid unless re-admitted
+        if ctx.monotonic() - t0 > SYNC_BUDGET_S:
+            more.append(n)                 # the next sync (dispatched below) examines it
+            continue
         try:
             full = ctx.gh.pr(n)            # changed_files is only in the single-PR payload
             x = examine(ctx, git, full, st0, reserved)
@@ -294,7 +311,7 @@ def sync(ctx):
             e = copy.deepcopy(x["entry"])
             e["builds_on"] = [b for b in e.get("builds_on") or [] if rfqueue.of_pr(st, b)]
             if x["kind"] == "valid":
-                dup = rfqueue.duplicate_of(st, e["id"], n, e["author"], e["tree"])
+                dup = rfqueue.duplicate_of(st, e["id"], n, e["author"], e["tree"], e.get("prover_tree"))
                 if dup:
                     e.update(tag=None, notes=None, readme=None)
                     e, _c = rfqueue.add_invalid(st, e, [dup], q)
@@ -356,6 +373,10 @@ def sync(ctx):
             _try(ctx, "dispatch", ctx.gh.dispatch, "evaluate-next.yml", ctx.default_branch)
         elif kind == "main":
             _try(ctx, "sync main", sync_main, ctx, e)
+    if more:
+        ctx.log(f"sync: the time budget ({SYNC_BUDGET_S} s) ran out before #{more[0]} ({len(more)} heads left): "
+                "the next sync goes on")
+        _try(ctx, "dispatch sync", ctx.gh.dispatch, "sync.yml", ctx.default_branch)
     ctx.log(f"sync: {len(changed)} entries changed")
     return len(changed)
 
@@ -517,6 +538,9 @@ def publish(ctx, eid, result_path):
         ver = {"attested": False, "record_ok": False, "reason": "no result"}
     else:
         ver = ctx.verify(result_path, result, e0.get("run_attempt") or 1)
+        why = entry_mismatch(result, e0, ctx.repo)
+        if why:     # the attested result measured another commit than the one selected: the organiser's
+            ver = {"attested": False, "record_ok": False, "reason": why}
     done = {}
 
     def mutate(snap):
@@ -525,23 +549,63 @@ def publish(ctx, eid, result_path):
         e = rfqueue.find(st, eid)
         if e is None or e["status"] != "running" or e.get("run_url") != ctx.run_url:
             return None
-        recs = rfqueue.standing(st, ctx.pin)
-        # the records of other commits, in any track: every port of a record shares its commit, and
-        # keeps its crowns
-        provers = {r["prover_sha256"]: r["id"] for r in rfqueue.records(st)
-                   if r.get("prover_sha256") and r.get("sha") != e.get("sha")}
-        rids = {t: r["id"] if r else None for t, r in recs.items()}
+        rids = {t: r["id"] if r else None for t, r in rfqueue.standing(st, ctx.pin).items()}
+        # the records of other commits with this prover (binary or sources; every port of a record
+        # shares its commit, and keeps its crowns): one that is this author's, or was queued first,
+        # bars this entry; another author's queued after this author first showed the prover is a
+        # copy, set aside (rfqueue.prover_owner: the earliest-queued owner of a prover wins)
+        keys = (result_prover_keys(result) if ver.get("attested") else set()) | {
+            k for k in rfqueue.prover_keys(e) if k[0] == "prover_tree"}
+        provers, aside = rfqueue.prover_owner(st, e, keys)
+        recs = rfqueue.standing(st, ctx.pin, aside)
         d = decide(result, ver, ctx.pin, recs, e.get("attempts", 1), provers, tracks=e.get("port_tracks"))
         now = ctx.now()
+        if aside and d["verified"] and d["verdict"] == "ACCEPT":
+            d["reasons"] = d["reasons"][:19] + [
+                f"the record {', '.join(aside)} has this prover, but another author's entry queued after this author "
+                "first showed it: set aside, this entry is compared as if it had not been taken (the earliest-queued "
+                "owner of a prover wins)"]
+        # the retry without the record build cache of a REJECT at a badge check (decide.cache_check):
+        # if the clean rebuild's badge is byte-identical to the first run's, the cache cannot have
+        # caused the failed check, so the first run's REJECT stands and this run's score is discarded
+        pend = e.get("cache_check")
+        stood = False
+        if pend and not d["requeue"] and not d["organiser_side"]:
+            e.pop("cache_check", None)
+            if cache_check_stands(pend, result):
+                stood, every_t = True, list(d["record_of"])
+                d.update(verdict="REJECT", status="rejected", score=None, took=[], requeue=False, comparable=False,
+                         record_of={t: None for t in every_t}, against={t: None for t in every_t},
+                         reasons=(pend.get("reasons") or [])[:18] + [
+                             f"the evaluation without the record build cache ({ctx.run_url}) built a byte-identical "
+                             "badge, so the cache could not have caused the failed check: the first run's REJECT "
+                             f"({pend.get('run_url')}) stands, and this run's verdict and score are discarded"])
+            elif pend.get("badge_sha256") and badge_sha(result):
+                # the clean rebuild built another badge than the first run's: the badge build is not
+                # reproducible, or the cache held another build. Either is the organiser's question,
+                # never a second draw for the entry: it waits in `error` for the owner (a forced run)
+                every_t = list(d["record_of"])
+                d.update(status="error", took=[], requeue=False, record_of={t: None for t in every_t},
+                         against={t: None for t in every_t},
+                         reasons=(pend.get("reasons") or [])[:17] + [
+                             f"organiser question: the evaluation without the record build cache ({ctx.run_url}) "
+                             f"built another badge than the first run's ({pend.get('run_url')}), whose check was "
+                             f"rejected; this run's verdict is {d['verdict']}",
+                             "held for the owner (status error): the owner decides, and a forced run evaluates it again"])
+            else:
+                d["reasons"] = d["reasons"][:19] + ["the evaluation without the record build cache: a badge is unknown "
+                                                    "on one side, so this run's verdict stands"]
         # the confirmation (decide.py): a pending candidate of this pin is decided by this run too; one
         # of an earlier pin is void (the pin moved before it ran), and this run is a first run again
         first = e.get("confirm") if (e.get("confirm") or {}).get("pin") == ctx.pin else None
         e.pop("confirm", None)
         conf = confirmed(first, d) if first else None
-        if first and conf and d["status"] == "rejected" and cache_retry(result, e):
+        if first and conf and d["status"] == "rejected" and cache_retry(result, e, d["verified"]):
             conf = None                         # a REJECT that used the record build cache: confirmed again without it
             d.update(requeue=True, status="queued")
             e["record_cache"] = False
+            if cache_check(result, ctx.run_url, d["reasons"]):
+                e["cache_check"] = cache_check(result, ctx.run_url, d["reasons"])
             d["reasons"] = d["reasons"][:19] + ["the record build cache was used: the confirmation runs once more without it"]
         if first and conf is None:
             e["confirm"] = first                # an organiser-side end: the confirmation stays pending
@@ -550,7 +614,7 @@ def publish(ctx, eid, result_path):
             e["confirmation"] = {"first_run": first.get("run_url"), "first_result": first.get("result"),
                                  "run": ctx.run_url, "result": f"results/{eid}-confirm.json",
                                  "first_score": first.get("score"), "score": d2_score(result),
-                                 "status": conf["status"]}
+                                 "status": conf["status"], "score_run": conf["score_run"]}
         elif d["status"] == "record" and not e.get("port_of"):
             # a record candidate: queued once more at this pin, ahead of the queue (rfqueue.order)
             e["confirm"] = candidate(d, ctx.pin, ctx.run_url, f"results/{eid}.json")
@@ -562,9 +626,13 @@ def publish(ctx, eid, result_path):
         e["build_manifest"] = build_manifest_sha(result) if d["verified"] else None
         e.update({k: d[k] for k in ("verdict", "score", "comparable", "truncated", "harness_commit",
                                     "verified", "record_of", "against", "reasons")}, record_in=[], retired_in={},
-                 prover_sha256=ps if isinstance(ps, str) and len(ps) == 64 and ps.isalnum() else None)
+                 prover_sha256=ps if isinstance(ps, str) and len(ps) == 64 and ps.isalnum() else None,
+                 prover_sources_sha256=dict(result_prover_keys(result)).get("prover_sources_sha256") if d["verified"] else None)
         # does this run count as the author's start in the fair order? a named organiser error never does
-        rfqueue.settle_run(e, d["organiser_error"], error=d["verdict"] == "ERROR" or not d["verified"])
+        # (a run with no result at all is not a named organiser error: it may be the entry's doing, so
+        # it counts as an unnamed ERROR does, from the entry's second one)
+        rfqueue.settle_run(e, d["organiser_error"] if result is not None else None,
+                           error=d["verdict"] == "ERROR" or not d["verified"])
         if d["organiser_error"] in PAUSING_ERRORS:
             e["attempts"] = max(0, e.get("attempts", 1) - 1)      # the organiser's fault: not an attempt
         if d["organiser_side"]:
@@ -582,9 +650,11 @@ def publish(ctx, eid, result_path):
             done["resumed"] = True
         ch = Changes()
         keep_raw = raw is not None and len(raw) <= 4 << 20
-        if d["status"] != "queued" and not e.get("confirm") and cache_retry(result, e):
+        if d["status"] != "queued" and not e.get("confirm") and cache_retry(result, e, d["verified"]):
             d["requeue"] = True
             e["reasons"] = e["reasons"][:19] + ["the record build cache was used: evaluated once more without it"]
+            if cache_check(result, ctx.run_url, e["reasons"]):
+                e["cache_check"] = cache_check(result, ctx.run_url, e["reasons"])
         if d["requeue"]:
             if d["verdict"] in ("ERROR", "REJECT") or not d["verified"]:
                 e["record_cache"] = False      # the retry builds clean: a sabotaged cache cannot fail it
@@ -593,12 +663,27 @@ def publish(ctx, eid, result_path):
                 e["attempts"] = 0              # the confirmation run has its own retry, as a port does
         else:
             e.update(status=d["status"], finished=now, record_in=d["took"])
+            if d["status"] == "record":
+                for rid in aside:      # a copy of this prover: retired in the tracks this entry takes
+                    r = rfqueue.find(st, rid)
+                    for t in d["took"]:
+                        rfqueue.retire(r, t, now, f"retired: its prover is that of {eid}, whose author showed it first")
         done["record_changed"] = {t: r["id"] if r else None for t, r in rfqueue.standing(st, ctx.pin).items()} != rids
-        if keep_raw and first:
+        if keep_raw and stood:
+            # the retry whose verdict was discarded: kept beside the first run's, which stays the entry's result
+            ch.put(f"results/{eid}{'-confirm' if first else ''}-nocache.json", raw)
+        elif keep_raw and first:
             ch.put(f"results/{eid}-confirm.json", raw)     # the first run's result stays results/<id>.json
         elif keep_raw:
             ch.put(f"results/{eid}.json", raw)
             e["result"] = f"results/{eid}.json"
+        if conf and e["status"] != "queued":
+            # the entry's run and result are the run its score is from (decide.confirmed: `score_run`),
+            # so that the Actions link and the result JSON a reader opens are the same run's
+            if conf["score_run"] == "confirmation" and keep_raw:
+                e["result"], e["run_url"] = f"results/{eid}-confirm.json", ctx.run_url
+            elif conf["score_run"] == "first":
+                e["result"], e["run_url"] = first.get("result") or e.get("result"), first.get("run_url") or e["run_url"]
         _write_state(ctx, ch, snap, st)
         done.update(entry=copy.deepcopy(e), state=copy.deepcopy(st))
         return ch
@@ -626,6 +711,24 @@ def publish(ctx, eid, result_path):
     if failed:
         raise RuntimeError(f"publish: {eid} is published on data, but these failed: {', '.join(failed)}")
     return e
+
+
+def entry_mismatch(result, e, repo):
+    """Why an attested result is not of the selected entry `e`, or None. A core that names the
+    commit it measured (`entry.sha`, `entry.tree`: the tree of `submissions/<root>`) must name `e`'s,
+    and then its `entry.name` must be `<repo>:submissions/<root>`; a result of an older core, with
+    neither field, is not compared."""
+    ent = result.get("entry") if isinstance(result, dict) else None
+    if not isinstance(ent, dict) or (ent.get("sha") is None and ent.get("tree") is None):
+        return None
+    if ent.get("sha") is not None and ent.get("sha") != e.get("sha"):
+        return f"the result measured the commit {clean(ent.get('sha'), 40)}, not the selected {e.get('sha')}"
+    if ent.get("tree") is not None and ent.get("tree") != e.get("tree"):
+        return f"the result measured the tree {clean(ent.get('tree'), 40)}, not the selected root's {e.get('tree')}"
+    name = ent.get("name")
+    if name is not None and name != f"{repo}:submissions/{e.get('root')}":
+        return f"the result names the entry {clean(name, 80)}, not {repo}:submissions/{e.get('root')}"
+    return None
 
 
 def d2_score(result):

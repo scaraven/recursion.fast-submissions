@@ -13,12 +13,12 @@
     'invalid', 'queued', 'running', 'superseded', 'withdrawn'];
   const STATUS_INFO = {
     record: ['record', 'Took the record of a track (or both) when it was evaluated; it keeps this status in the history after it is beaten.'],
-    retired: ['retired', 'A record that stood, then was retired by the owner in every track it held; it never stands again.'],
-    accepted: ['accepted', 'Certified, comparable and attested, but not a new record: it did not beat either track\'s standing record by more than the margin, or its prover binary is an earlier record\'s.'],
+    retired: ['retired', 'A record that stood, then was retired in every track it held (by the owner, or as a copy of an earlier author\'s prover); it never stands again.'],
+    accepted: ['accepted', 'Certified, comparable and attested, but not a new record: it did not beat either track\'s standing record by more than the margin, its confirmation run did not, or its prover is an earlier record\'s.'],
     unranked: ['unranked', 'Certified, but not comparable (a truncated stream, a job plan that did not match, or no positive score).'],
     provisional: ['provisional', 'The Lean builds but the certificate does not check; benchmarked, never ranked.'],
-    rejected: ['rejected', 'The certificate or the benchmark failed. The reasons say why.'],
-    error: ['error', 'Waiting on the organiser: an organiser-side fault, not the entry\'s. Requeued once, then left for the owner.'],
+    rejected: ['rejected', 'The certificate or the benchmark failed (a record candidate whose confirmation run was a REJECT, too). The reasons say why.'],
+    error: ['error', 'Waiting on the organiser: an organiser-side fault, not the entry\'s (retried once; a machine-fingerprint, stream-shape or malformed-record fault is retried without using an attempt), or a question for the owner (a badge check whose clean rebuild differs). Left for the owner, who can force a run.'],
     invalid: ['invalid', 'Failed the intake check; not evaluated.'],
     queued: ['queued', 'Waiting for the evaluator.'],
     running: ['running', 'Being evaluated now.'],
@@ -27,22 +27,78 @@
   };
   const VERDICTS = ['ACCEPT', 'PROVISIONAL', 'REJECT', 'ERROR'];
 
-  // The two tracks, from the one evaluation, each with its own records: one score S, two
-  // eligibilities (`final`: only the final proof is verified; `every`: every proof is). A result
-  // names each track's field in `score.tracks` (`every` is absent when the entry is eligible for
-  // `final` only). A score without `tracks` is an earlier season's (the sum alone) and counts in
-  // neither track (`field: null`); earlier seasons' tracks (sum, product) are not shown as tabs.
-  // Components: [field, label, unit, note].
-  const PARTS = Object.freeze([['P_total_s', 'P_total', 's'], ['size_factor', 'size factor', ''], ['final_pi_bytes', '|\u03c0\u2088|', 'bytes']]);
-  const FORMULA = 'S = P_total \u00b7 2^(|\u03c0\u2088| / 1 MiB)';
+  // The two tracks, from the one evaluation, each with its own records and its own score
+  // (`final`: only the final proof is verified, and S prices its size; `every`: every proof is, and
+  // S_every prices the largest). A result names each track's field in `score.tracks`
+  // ({"final": "S", "every": "S_every"}; `every` is absent when the entry is eligible for `final`
+  // only). A score without `tracks` is an earlier season's (the sum alone) and counts in neither
+  // track (`field: null`); earlier seasons' tracks (sum, product) are not shown as tabs.
+  // Each track's parts: [field, label, unit, note], `note` marking a part shown but not scored (none
+  // now); `desc`: what each part is, under its number; `size`: the priced proof's field and symbol;
+  // `factor`: the size factor's field (this season the priced proof's size in bytes itself, so it is
+  // not shown twice); `unit`: the unit of the score (this season: seconds times bytes).
+  const P_DESC = 'the median of three timed passes\' totals over the 16 steps';
+  const UNIT = 's\u00b7B';
   const TRACKS = Object.freeze([
-    Object.freeze({ id: 'final', label: 'Final', sym: 'S', field: null, formula: FORMULA, parts: PARTS,
-      blurb: 'Only the final proof is verified (at most 512 KiB, checked in at most 128 ms); each intermediate output need only fit in 1 MiB. S: the total time of the eight timed steps, in seconds, times the final proof\'s size factor.' }),
-    Object.freeze({ id: 'every', label: 'Every', sym: 'S', field: null, formula: FORMULA, parts: PARTS,
-      blurb: 'Every proof is verified: each intermediate proof too is accepted against its statement (at most 1 MiB, checked in at most 128 ms). The same score S as the final track.' })
+    Object.freeze({ id: 'final', label: 'Final', sym: 'S', field: null, unit: UNIT, factor: 'size_factor',
+      formula: 'S = P_total \u00b7 |\u03c0\u2081\u2086|',
+      parts: Object.freeze([['P_total_s', 'P_total', 's'], ['final_pi_bytes', '|\u03c0\u2081\u2086|', 'B']]),
+      desc: Object.freeze({ P_total_s: P_DESC, final_pi_bytes: 'the final proof, in bytes' }),
+      size: ['final_pi_bytes', '|\u03c0\u2081\u2086|'],
+      note: 'Seconds \u00b7 bytes: the median of three timed passes\' totals over the 16 steps, times the final proof\'s size in bytes. Lower is better.',
+      blurb: 'Only the final proof is verified (at most 512 KiB, checked in at most 64 ms); each intermediate output need only fit in 1 MiB. S: the median of three timed passes\' total time over the 16 steps, in seconds, times the final proof\'s size in bytes.' }),
+    Object.freeze({ id: 'every', label: 'Every', sym: 'S_every', field: null, unit: UNIT, factor: 'size_factor_every',
+      formula: 'S_every = P_total \u00b7 max |\u03c0\u1d62|',
+      parts: Object.freeze([['P_total_s', 'P_total', 's'], ['max_pi_bytes', 'max |\u03c0\u1d62|', 'B']]),
+      desc: Object.freeze({ P_total_s: P_DESC, max_pi_bytes: 'the largest proof, in bytes' }),
+      size: ['max_pi_bytes', 'max |\u03c0\u1d62|'],
+      note: 'Seconds \u00b7 bytes: the median of three timed passes\' totals over the 16 steps, times the largest proof\'s size in bytes. Lower is better.',
+      blurb: 'Every proof is verified: each intermediate proof too is accepted against its statement (at most 1 MiB, checked in at most 64 ms). S_every: the same P_total, times the size in bytes of the largest of the 16 proofs.' })
   ]);
   const TRACK_IDS = TRACKS.map(t => t.id);
   const trackOf = id => TRACKS.find(t => t.id === id) || TRACKS[0];
+  // An earlier v6 season's pricing (a result with `score.size_ref`, bytes): the exponential factor
+  // 2^(|\u03c0| / size_ref), the score in seconds, its parts P_total, the factor and the proof size.
+  // One frozen definition per track and scale.
+  const OLD_RULES = new Map();
+  function oldRule(tr, ref) {
+    const r = typeof ref === 'number' && Number.isFinite(ref) && ref > 0 ? ref : 524288;
+    const key = tr.id + ':' + r;
+    if (OLD_RULES.has(key)) return OLD_RULES.get(key);
+    const scale = r % 1048576 === 0 ? (r / 1048576) + ' MiB' : r % 1024 === 0 ? (r / 1024) + ' KiB' : r + ' bytes';
+    const [sk, sl] = tr.size, x = `2^(${sl} / ${scale})`;
+    const what = tr.id === 'final' ? 'the final proof\'s' : 'the largest proof\'s';
+    const d = Object.freeze(Object.assign({}, tr, { unit: 's', old: true, factorText: `2^(${sl}/${scale})`,
+      formula: `${tr.sym} = P_total \u00b7 ${x}`,
+      parts: Object.freeze([['P_total_s', 'P_total', 's'], [tr.factor, 'size factor', ''], [sk, sl, 'bytes']]),
+      desc: Object.freeze(Object.assign({}, tr.desc, { [tr.factor]: x, [sk]: tr.id === 'final' ? 'the final proof' : 'the largest proof' })),
+      note: `Seconds (an earlier season's rule): the median of three timed passes' totals over the 16 steps, times ${what} size factor ${x}. Lower is better.` }));
+    OLD_RULES.set(key, d);
+    return d;
+  }
+  // Whether a score is priced at this season's rule (its size factor is the final proof's size in
+  // bytes), or at an earlier v6 season's exponential one (`size_ref`, or no size factor at all): the
+  // bot's `common.product_rule`, so the site and the bot give a result the same unit.
+  function productRule(sc) {
+    if (!sc || typeof sc !== 'object' || 'size_ref' in sc) return false;
+    const f = sc.size_factor, pi = sc.final_pi_bytes;
+    return typeof f === 'number' && Number.isFinite(f) && typeof pi === 'number' && Number.isFinite(pi) && pi > 0
+      && Math.abs(f - pi) <= 1e-9 * pi;
+  }
+  // The track definition whose parts describe a score in track `tr`: the track's own at the score's
+  // rule (this season's, or an earlier v6 season's exponential, `oldRule`), except for a result of
+  // the first v6 rules (before the leaf data), which scored `every` by the final proof's `S`. No
+  // score at all: the track's own (nothing is priced).
+  function pricedBy(tr, sc) {
+    const t = (sc && sc.tracks && sc.tracks[tr.id] === 'S' && tr.id !== 'final') ? TRACKS[0] : tr;
+    if (!sc) return t;
+    return productRule(sc) ? t : oldRule(t, sc.size_ref);
+  }
+  // A unit as text and nodes, an exponent (`^(x)`) raised.
+  function unitNode(u) {
+    const m = /^(.*)\^\((.+)\)$/.exec(u || '');
+    return m ? [m[1], el('sup', null, m[2])] : [u || ''];
+  }
 
   // An id is pr<N>-<12 hex of the head sha>, with -<8 hex of the pin> for a record ported to a new pin.
   const ID = 'pr[1-9]\\d{0,8}-[0-9a-f]{12}(?:-[0-9a-f]{8})?';
@@ -56,7 +112,7 @@
     tag: new RegExp('^rf-source/' + ID + '$'),
     run: new RegExp('^https://github\\.com/' + reEsc(CFG.REPO) + '/actions/runs/\\d{1,20}(?:/job/\\d{1,20}|/attempts/\\d{1,4})?$'),
     key: /^[A-Za-z_][A-Za-z0-9_]{0,40}$/,
-    result: new RegExp('^results/' + ID + '\\.json$'),
+    result: new RegExp('^results/' + ID + '(?:-confirm)?\\.json$'),
     track: /^[a-z][a-z0-9_]{0,15}$/
   };
   const BAD_KEYS = new Set(['__proto__', 'constructor', 'prototype', 'hasOwnProperty', 'toString', 'valueOf']);
@@ -94,11 +150,38 @@
       if (typeof v === 'number' && Number.isFinite(v)) out[k] = v;
       else if (typeof v === 'boolean') out[k] = v;
       else if (typeof v === 'string' && text(v, 80)) out[k] = text(v, 80);
+      else if (Array.isArray(v) && v.length > 0 && v.length <= 8 && v.every(x => typeof x === 'number' && Number.isFinite(x))) out[k] = v.slice();   // pass_totals_s
       else continue;
       n++;
     }
     for (const k of ['S', 'P_bar', 'V_bar']) if (typeof out[k] !== 'number' || out[k] < 0) out[k] = null;   // P_bar, V_bar: earlier seasons
+    // a confirmed record whose tracks keep different runs: {track: that run's parts} (the bot's
+    // decide.confirmed), flat numbers and number lists only
+    const by = raw.by_track;
+    if (by && typeof by === 'object' && !Array.isArray(by)) {
+      const b = Object.create(null);
+      for (const [t, v] of Object.entries(by).slice(0, 8)) {
+        if (!RE.track.test(t) || !v || typeof v !== 'object' || Array.isArray(v)) continue;
+        const o = Object.create(null);
+        for (const [k, x] of Object.entries(v).slice(0, 48)) {
+          if (!RE.key.test(k) || BAD_KEYS.has(k)) continue;
+          if (typeof x === 'number' && Number.isFinite(x)) o[k] = x;
+          else if (Array.isArray(x) && x.length > 0 && x.length <= 8 && x.every(y => typeof y === 'number' && Number.isFinite(y))) o[k] = x.slice();
+        }
+        b[t] = o;
+      }
+      out.by_track = b;
+    }
     return (out.S === null && out.P_bar === null && out.V_bar === null && n === 0) ? null : out;
+  }
+
+  // The parts shown with a score in track `track` (P_total, the size factor and the proof size, the
+  // passes): the score's own, or for a confirmed record whose tracks keep different runs, that
+  // track's run's (`score.by_track[track]`), so a track's parts and its score are of one run.
+  function partsIn(sc, track) {
+    if (!sc) return sc;
+    const b = sc.by_track && sc.by_track[track];
+    return b ? Object.assign(Object.create(null), sc, b) : sc;
   }
 
   // An entry's score in a track (a positive number), or null: the field `score.tracks` names, or for a
@@ -132,6 +215,14 @@
     return out;
   }
   const idOrNull = x => typeof x === 'string' && RE.id.test(x) ? x : null;
+  function cleanConfirmation(c) {
+    if (!c || typeof c !== 'object' || Array.isArray(c)) return null;
+    const run = x => typeof x === 'string' && RE.run.test(x) ? x : null;
+    const res = x => typeof x === 'string' && RE.result.test(x) ? x : null;
+    return { first_run: run(c.first_run), first_result: res(c.first_result), run: run(c.run), result: res(c.result),
+      status: STATUSES.includes(c.status) ? c.status : null,
+      score_run: c.score_run === 'first' || c.score_run === 'confirmation' ? c.score_run : null };
+  }
 
   function cleanEntry(r, legacy) {
     if (!r || typeof r !== 'object') return null;
@@ -173,6 +264,9 @@
       result: typeof r.result === 'string' && RE.result.test(r.result) ? r.result : null,
       retired: date(r.retired),
       port_of: typeof r.port_of === 'string' && RE.id.test(r.port_of) ? r.port_of : null,
+      // a record candidate's two runs (the bot's `confirmation`): their Actions runs and results, and
+      // which run the entry's score object is from (`score_run`: first or confirmation)
+      confirmation: cleanConfirmation(r.confirmation),
       // a record candidate waiting for its confirmation run (the bot's `confirm`): first in the queue
       confirming: !!(r.confirm && typeof r.confirm === 'object') && ['queued', 'running', 'error'].includes(r.status)
     };
@@ -305,13 +399,18 @@
     if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) return '\u2013';
     return v >= 1048576 ? (v / 1048576).toFixed(2) + '\u00a0MiB' : v >= 1024 ? Math.round(v / 1024) + '\u00a0KiB' : Math.round(v) + '\u00a0B';
   }
-  // A component of a score in its unit: seconds, bytes, or a plain number.
+  // A component of a score in its unit: seconds, bytes (`B`: exact, a factor of the score), or a plain number.
   function fmtPart(v, unit) {
     if (typeof v !== 'number' || !Number.isFinite(v)) return '\u2013';
+    if (unit === 'B') return v >= 0 ? Math.round(v).toLocaleString('en-US') + '\u00a0B' : '\u2013';
     return unit === 'bytes' ? fmtBytes(v) : unit === 's' ? fmtS(v) : (Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(3));
   }
-  function fmtS(v) {
-    if (v === null || v === undefined) return '–';
+  // A score (or a time) in its unit: s\u00b7B (this season's scores) always as an integer with
+  // separators, `4,358,812`; seconds (no unit given: a time, or an earlier season's score) to 3 or 4
+  // significant digits.
+  function fmtS(v, unit) {
+    if (typeof v !== 'number' || !Number.isFinite(v)) return '–';
+    if (unit === UNIT) return Math.round(v).toLocaleString('en-US');
     const a = Math.abs(v);
     return a >= 100 ? v.toFixed(1) : a >= 10 ? v.toFixed(2) : v.toFixed(3);
   }
@@ -474,7 +573,7 @@
   }
 
   window.RF = {
-    CFG, BASE, dataKey, STATUSES, STATUS_INFO, RE, TRACKS, TRACK_IDS, trackOf, scoreIn, retiredIn, chosenTrack, rememberTrack,
+    CFG, BASE, dataKey, STATUSES, STATUS_INFO, RE, TRACKS, TRACK_IDS, trackOf, pricedBy, productRule, UNIT, unitNode, partsIn, scoreIn, retiredIn, chosenTrack, rememberTrack,
     loadData, loadText, el, svg, ext, page, link, fmtS, fmtPart, fmtBytes, fmtDate, fmtDateTime, timeEl, ago, badge,
     shortSha, gainOf, marginText, pct, unverified, evaluatedAt, relations, records, nameOf, section, chrome, footer
   };

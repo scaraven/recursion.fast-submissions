@@ -11,9 +11,11 @@
     if (!a || !e.record_of[tr.id]) return e.port_of ? 'none (the record re-run at a new pin)' : 'none (no record stood in this track at its pin)';
     const prev = data.subs.find(x => x.id === a.record);
     const name = el('a', { href: page('submission.html', { id: a.record }) }, prev ? nm(prev) : a.record);
-    return [pct(gainOf(e, tr.id)), ' against ', name, a.S_record !== null ? ` (${fmtS(a.S_record)} s)` : ''];
+    return [pct(gainOf(e, tr.id)), ' against ', name, a.S_record !== null ? ` (${fmtS(a.S_record, unitOf(e, tr))} ${unitOf(e, tr)})` : ''];
   }
   const short = sha => sha ? sha.slice(0, 7) : 'unknown';
+  // the unit of an entry's score in a track, by how its result is priced (this season: s\u00b7B)
+  const unitOf = (e, tr) => window.RF.pricedBy(tr, window.RF.partsIn(e.score, tr.id)).unit;
 
   // ---- the track tabs (keyboard: arrows, Home, End; the choice is remembered) --------------------
   let track = window.RF.chosenTrack();
@@ -59,8 +61,8 @@
       const last = recs[recs.length - 1];
       box.append(el('div', { class: 'empty-card' },
         el('h2', null, last ? `No standing ${tr.label.toLowerCase()} record at this contract pin.` : `No ${tr.label.toLowerCase()} record yet. Be the first.`),
-        last ? el('p', null, `The records of this track so far were set at earlier pins or retired (the leaderboard keeps them). The first certified, comparable, attested ACCEPT at pin ${short(data.core)} becomes the record of this track.`)
-          : el('p', null, `The first entry with a certified, comparable, attested ACCEPT becomes the record of each track. After that, a new record of this track needs a score ${tr.sym} more than ${marginText(data)} below the standing record's, at the same contract pin.`),
+        last ? el('p', null, `The records of this track so far were set at earlier pins or retired (the leaderboard keeps them). The first certified, comparable, attested ACCEPT at pin ${short(data.core)} becomes the record of this track once its confirmation run (the same commit, once more at the pin) is one too; the record keeps the worse of the two runs.`)
+          : el('p', null, `The first entry with a certified, comparable, attested ACCEPT becomes the record of each track once its confirmation run (the same commit, once more at the pin) is one too, keeping the worse of the two runs. After that, a new record of this track needs a score ${tr.sym} more than ${marginText(data)} below the standing record's, at the same contract pin, in both runs.`),
         data.unpublished ? el('p', null, 'Nothing has been published yet: the first pull request starts the record book.') : null,
         waiting ? el('p', null, waiting === 1 ? 'One submission is in the queue.' : waiting + ' submissions are in the queue.') : null,
         el('div', { class: 'actions' },
@@ -68,15 +70,19 @@
           el('a', { class: 'button ghost', href: page('rules.html') + '#score' }, 'How the tracks score'))));
       return;
     }
-    const sc = cur.score;
-    const split = [el('span', { class: 'math' }, 'P_total'), fmtS(sc.P_total_s), el('span', { class: 'op' }, '\u00d7'),
-      el('span', { class: 'math' }, '2^(|π₈|/1 MiB)'), fmtPart(sc.size_factor, ''), el('span', { class: 'muted' }, ` (|π₈| = ${window.RF.fmtBytes(sc.final_pi_bytes)})`)];
+    const sc = window.RF.partsIn(cur.score, tr.id);     // this track's run's parts (a confirmed record)
+    // this track's own priced proof (`final`: the final proof; `every`: the largest), its size in
+    // bytes the factor (an earlier v6 season's result: its exponential factor of that size)
+    const pt = window.RF.pricedBy(tr, sc), [sk, sl] = pt.size;
+    const split = [el('span', { class: 'math' }, 'P_total'), fmtS(sc.P_total_s) + '\u00a0s', el('span', { class: 'op' }, '\u00d7'),
+      ...(pt.old ? [el('span', { class: 'math' }, pt.factorText), fmtPart(sc[pt.factor], ''), el('span', { class: 'muted' }, ` (${sl} = ${window.RF.fmtBytes(sc[sk])})`)]
+        : [el('span', { class: 'math' }, sl), fmtPart(sc[sk], 'B')])];
     const other = window.RF.TRACKS.filter(t => t.id !== tr.id && data.record[t.id] && data.record[t.id].id === cur.id);
     const left = el('div', null,
       el('h2', null, `Current ${tr.label.toLowerCase()} record`),
-      el('p', { class: 'score-big' }, el('span', { class: 'math' }, tr.sym), fmtS(scoreIn(cur, tr.id)), el('span', { class: 'unit' }, 's')),
+      el('p', { class: 'score-big' }, el('span', { class: 'math' }, pt.sym), fmtS(scoreIn(cur, tr.id), pt.unit), el('span', { class: 'unit' }, window.RF.unitNode(pt.unit))),
       el('p', { class: 'score-split' }, '=', split),
-      el('p', { class: 'score-note' }, 'Seconds: the total time of the eight steps, times the size factor. Lower is better.'),
+      el('p', { class: 'score-note' }, pt.note),
       other.length ? el('p', { class: 'score-note' }, 'It also holds the ' + other.map(t => t.label.toLowerCase()).join(' and ') + ' record.') : null);
     const dl = el('dl', { class: 'kv' },
       el('dt', null, 'Entry'), el('dd', null, el('a', { href: page('submission.html', { id: cur.id }) }, nm(cur))),
@@ -96,25 +102,43 @@
     const raw = span / n, p = 10 ** Math.floor(Math.log10(raw)), f = raw / p;
     return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
   }
+  // a tick of the score axis, compact on the axis only (s\u00b7B scores run to 10^9 and beyond:
+  // "1.4G", "650M", so the labels leave the plot its width); the tooltip and labels keep fmtS
+  const SI = ['', 'k', 'M', 'G', 'T', 'P', 'E'];
+  const compact = v => {
+    let k = 0, w = v;
+    while (+w.toPrecision(3) >= 1000 && k < SI.length - 1) { w /= 1000; k++; }
+    return +w.toPrecision(3) >= 1000 ? v.toExponential(1) : String(+w.toPrecision(3)) + SI[k];
+  };
+  const tickText = (v, u) => v >= 1000 ? compact(v) : v >= 1 || v === 0 ? fmtS(v, u) : v.toExponential(0);
   function chart(recs, tr, data, nm) {
     const box = document.getElementById('chart');
     const S = e => scoreIn(e, tr.id);
+    // one axis, one unit: only results priced like this track (s\u00b7B); an earlier v6 season's
+    // (seconds, its exponential factor) stay out of the chart, in the tables with their own unit
+    const priced = e => !window.RF.pricedBy(tr, window.RF.partsIn(e.score, tr.id)).old;
     // comparable, attested ACCEPTs that are not a record of this track
     const others = data.subs.filter(e => ['accepted', 'record', 'retired'].includes(e.status) && !e.record_in.includes(tr.id)
-      && e.verified && e.comparable && S(e) !== null && evaluatedAt(e));
+      && e.verified && e.comparable && S(e) !== null && evaluatedAt(e) && priced(e));
     const W = Math.max(280, box.clientWidth - 16), H = W < 560 ? 240 : 300;
     const m = { l: 50, r: W < 560 ? 52 : 70, t: 18, b: 30 };
-    const pos = recs;
+    const pos = recs.filter(priced), earlier = recs.length - pos.length;
+    const u = tr.unit;
     const s = svg('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': pos.length
-      ? `${tr.label} record score over time: ${pos.length} records, from ${fmtS(S(pos[0]))} s to ${fmtS(S(pos[pos.length - 1]))} s`
-      : `No ${tr.label.toLowerCase()} records yet` });
+      ? `${tr.label} record score over time: ${pos.length} records, from ${fmtS(S(pos[0]), u)} ${u} to ${fmtS(S(pos[pos.length - 1]), u)} ${u}`
+      : earlier ? `No ${tr.label.toLowerCase()} records at this season's rule yet` : `No ${tr.label.toLowerCase()} records yet` });
     const tip = el('div', { class: 'tooltip', hidden: true, role: 'status' });
     box.replaceChildren();
+    const note = earlier ? el('div', { class: 'legend' }, el('span', { class: 'muted' }, earlier === 1
+      ? `One earlier record, priced by an earlier season's rule (in seconds), is not charted; the leaderboard lists it.`
+      : `${earlier} earlier records, priced by an earlier season's rule (in seconds), are not charted; the leaderboard lists them.`)) : null;
     if (!pos.length) {
       for (let i = 0; i < 5; i++) s.append(svg('line', { class: 'grid', x1: m.l, x2: W - m.r, y1: m.t + i * (H - m.t - m.b) / 4, y2: m.t + i * (H - m.t - m.b) / 4 }));
       s.append(svg('line', { class: 'axis', x1: m.l, x2: W - m.r, y1: H - m.b, y2: H - m.b }));
-      s.append(svg('text', { class: 'empty-msg', x: (m.l + W - m.r) / 2, y: (H - m.b + m.t) / 2, 'text-anchor': 'middle' }, 'The first record of this track will start this line.'));
+      s.append(svg('text', { class: 'empty-msg', x: (m.l + W - m.r) / 2, y: (H - m.b + m.t) / 2, 'text-anchor': 'middle' },
+        earlier ? 'The first record at this season\'s rule will start this line.' : 'The first record of this track will start this line.'));
       box.append(s);
+      if (note) box.append(note);
       return;
     }
     const pts = [...pos, ...others.slice(-2000)];
@@ -135,6 +159,7 @@
       yticks = [];
       for (let v = 0; v <= hi + 1e-9; v += step) yticks.push(v);
     }
+    m.l = Math.max(m.l, 14 + 7 * Math.max(...yticks.map(v => tickText(v, u).length)));   // the widest tick fits
     const t = e => evaluatedAt(e).getTime();
     const end = Math.max(...pts.map(t), data.updated ? data.updated.getTime() : 0);
     let t0 = Math.min(...pts.map(t)), t1 = end;
@@ -144,7 +169,7 @@
     const x = v => m.l + (v - t0) / (t1 - t0) * (W - m.l - m.r);
     for (const v of yticks) {
       s.append(svg('line', { class: 'grid', x1: m.l, x2: W - m.r, y1: y(v), y2: y(v) }));
-      s.append(svg('text', { class: 'tick', x: m.l - 8, y: y(v) + 4, 'text-anchor': 'end' }, v >= 1 && v < 1e6 || v === 0 ? String(+v.toFixed(2)) : v.toExponential(0)));
+      s.append(svg('text', { class: 'tick', x: m.l - 8, y: y(v) + 4, 'text-anchor': 'end' }, tickText(v, u)));
     }
     s.append(svg('line', { class: 'axis', x1: m.l, x2: W - m.r, y1: H - m.b, y2: H - m.b }));
     const days = (t1 - t0) / 86400e3;
@@ -168,7 +193,7 @@
     if (cur) s.append(svg('path', { class: 'step-tail', d: `M${x(t(cur)).toFixed(1)} ${y(S(cur)).toFixed(1)}H${x(end).toFixed(1)}` }));
     const word = e => e.record_in.includes(tr.id) ? (retiredIn(e, tr.id) ? 'retired record' : 'record') : 'accepted';
     const showTip = (e, px, py) => {
-      tip.replaceChildren(el('strong', null, nm(e)), `${tr.sym} = ${fmtS(S(e))} s`, el('br'),
+      tip.replaceChildren(el('strong', null, nm(e)), `${tr.sym} = ${fmtS(S(e), u)} ${u}`, el('br'),
         fmtDate(evaluatedAt(e)) + ', ' + word(e) + (e.author ? ', ' + e.author : ''));
       tip.hidden = false;
       const bw = box.clientWidth;
@@ -178,7 +203,7 @@
     const hide = () => { tip.hidden = true; };
     const point = (e, cls, r) => {
       const px = x(t(e)), py = y(S(e));
-      const a = svg('a', { href: page('submission.html', { id: e.id }), 'aria-label': `${nm(e)}: ${tr.sym} ${fmtS(S(e))} s, ${fmtDate(evaluatedAt(e))}, ${word(e)}` },
+      const a = svg('a', { href: page('submission.html', { id: e.id }), 'aria-label': `${nm(e)}: ${tr.sym} ${fmtS(S(e), u)} ${u}, ${fmtDate(evaluatedAt(e))}, ${word(e)}` },
         svg('circle', { class: 'hit', cx: px, cy: py, r: 12 }),
         svg('circle', { class: cls, cx: px, cy: py, r }));
       const scale = () => s.getBoundingClientRect().width / W;
@@ -191,13 +216,14 @@
     for (const e of others.slice(-2000)) point(e, 'pt-other', 3.6);
     for (const e of pos) point(e, retiredIn(e, tr.id) ? 'pt-retired' : 'pt-record', 5);
     const lab = cur || pos[pos.length - 1];
-    s.append(svg('text', { class: 'direct', x: x(t(lab)) + 9, y: y(S(lab)) - 9 }, fmtS(S(lab)) + ' s'));
+    s.append(svg('text', { class: 'direct', x: x(t(lab)) + 9, y: y(S(lab)) - 9 }, fmtS(S(lab), u) + ' ' + u));
     box.append(s);
     const hasRetired = pos.some(e => retiredIn(e, tr.id));
     if (others.length || hasRetired) box.append(el('div', { class: 'legend' }, el('span', { class: 'lg-record' }, 'Record'),
       hasRetired ? el('span', { class: 'lg-retired' }, 'Retired record') : null,
       others.length ? el('span', { class: 'lg-other' }, 'Accepted, not a record of this track') : null));
     if (log) box.append(el('div', { class: 'legend' }, el('span', { class: 'muted' }, 'Logarithmic scale.')));
+    if (note) box.append(note);
     box.append(tip);
   }
 
@@ -206,17 +232,24 @@
     document.getElementById('leaderboard-note').textContent =
       `Every ${tr.label.toLowerCase()} record, newest first. A new record needs a score ${tr.sym} more than ${marginText(data)} below the standing record's, at the same contract pin. Gain: 1 \u2212 ${tr.sym} / ${tr.sym},record against the record it beat.`;
     document.getElementById('leaders-caption').textContent = `Every ${tr.label.toLowerCase()} record, newest first, grouped by contract pin`;
-    const cols = 6 + tr.parts.length;
+    const cols = 8;
     const th = (label, cls, title) => el('th', { scope: 'col', class: cls || null, title: title || null }, label);
+    // the columns: P_total and the priced proof's size, each row's own (`pricedBy`: this track's
+    // proof, or the final proof for rows of the first v6 rules; a board of both kinds names the
+    // priced proof per cell); the score's unit in the header when every row has the same one
+    const defs = [...new Set(recs.map(e => window.RF.pricedBy(tr, window.RF.partsIn(e.score, tr.id))))];
+    const hd = defs.length === 1 ? defs[0] : tr, mixed = new Set(defs.map(d => d.size[0])).size > 1;
+    const units = new Set(defs.map(d => d.unit)), oneUnit = units.size === 1 ? hd.unit : null;
     document.getElementById('leaders-head').replaceChildren(el('tr', null,
-      th('#', 'num'), th('Entry'), th('Author'), th(tr.sym + ' (s)', 'num', 'the score of this track, seconds'),
-      tr.parts.map(([, label, unit, note]) => th(label + (unit === 's' ? ' (s)' : '') + (note ? ' *' : ''), 'num' + (note ? ' unscored' : ''),
-        note ? 'shown, ' + note : null)),
+      th('#', 'num'), th('Entry'), th('Author'), th([hd.sym, oneUnit ? [' (', window.RF.unitNode(oneUnit), ')'] : null], 'num',
+        'the score of this track, ' + (oneUnit ? oneUnit : 'in each row\'s unit')),
+      th('P_total (s)', 'num', 'the median of three timed passes\' totals'),
+      th(mixed ? 'priced |\u03c0|' : hd.size[1], 'num', mixed ? 'the proof the row\'s score prices' : 'the priced proof\'s size'),
       th('Gain', 'num'), th('Date')));
     const tb = document.getElementById('leaders');
     tb.replaceChildren();
     if (!recs.length) {
-      tb.append(el('tr', { class: 'empty-row' }, el('td', { colspan: cols }, `No ${tr.label.toLowerCase()} records yet. The first certified, comparable, attested ACCEPT takes the board.`)));
+      tb.append(el('tr', { class: 'empty-row' }, el('td', { colspan: cols }, `No ${tr.label.toLowerCase()} records yet. The first certified, comparable, attested ACCEPT whose confirmation run is one too takes the board.`)));
       return;
     }
     const numbered = recs.map((e, i) => ({ e, n: i + 1 })).reverse();
@@ -228,7 +261,7 @@
           'Contract pin ', pin ? ext(link.core(pin), short(pin)) : 'unknown',
           pin && pin === data.core ? ' (current)' : ' (earlier pin)')));
       }
-      const sc = e.score;
+      const sc = window.RF.partsIn(e.score, tr.id), rowDef = window.RF.pricedBy(tr, sc);
       const gain = gainOf(e, tr.id);
       const a = e.against[tr.id];
       const isCur = data.record[tr.id] && data.record[tr.id].id === e.id;
@@ -237,14 +270,13 @@
         el('td', null, el('a', { class: 'entry', href: page('submission.html', { id: e.id }) }, nm(e)),
           isCur ? [' ', el('span', { class: 'badge st-record' }, 'current')] : retiredIn(e, tr.id) ? [' ', badge('retired')] : null),
         el('td', null, e.author ? ext(link.author(e), e.author) : '–'),
-        el('td', { class: 'num' }, el('strong', null, fmtS(scoreIn(e, tr.id)))),
-        tr.parts.map(([k, , unit, note]) => el('td', { class: 'num' + (note ? ' unscored' : '') }, fmtPart(sc[k], unit))),
-        el('td', { class: 'num' + (gain !== null && e.record_of[tr.id] ? ' gain' : ''), title: gain !== null && a.S_record !== null ? `Against the ${fmtS(a.S_record)} s of the record it beat` : null },
+        el('td', { class: 'num' }, el('strong', null, fmtS(scoreIn(e, tr.id), unitOf(e, tr))), oneUnit ? null : [' ', el('small', null, window.RF.unitNode(unitOf(e, tr)))]),
+        el('td', { class: 'num' }, fmtPart(sc.P_total_s, 's')),
+        el('td', { class: 'num', title: mixed ? rowDef.size[1] : null }, fmtPart(sc[rowDef.size[0]], rowDef.old ? 'bytes' : 'B')),
+        el('td', { class: 'num' + (gain !== null && e.record_of[tr.id] ? ' gain' : ''), title: gain !== null && a.S_record !== null ? `Against the ${fmtS(a.S_record, unitOf(e, tr))} ${unitOf(e, tr)} of the record it beat` : null },
           gain !== null && e.record_of[tr.id] ? pct(gain) : e.port_of ? 'ported' : 'first at pin'),
         el('td', null, timeEl(evaluatedAt(e)))));
     }
-    if (tr.parts.some(p => p[3])) tb.append(el('tr', { class: 'note-row' }, el('td', { colspan: cols, class: 'muted' },
-      '* ' + tr.parts.filter(p => p[3]).map(p => p[1] + ': ' + p[3]).join('; ') + ' (shown, not scored).')));
   }
 
   // ---- queue: running first, then a waiting port, then the bot's fair order by author ------------
@@ -276,8 +308,8 @@
   }
   // the fair order's start of an author's evaluation (AGENTS.md §9), as the bot's
   // rfqueue.counted_start: `counted_at`, the start of its first run that counted (none after a named
-  // organiser error, nor after an entry's first unnamed ERROR); superseded and withdrawn entries
-  // never count. There is no cap on an author's evaluations.
+  // organiser error, nor after an entry's first unnamed ERROR or first run with no result at all);
+  // superseded and withdrawn entries never count. There is no cap on an author's evaluations.
   function countedStart(e) {
     if (e.port_of || ['superseded', 'withdrawn', 'invalid'].includes(e.status)) return null;
     if (e.status === 'running') return e.counted_at || e.started || null;
@@ -346,7 +378,9 @@
         el('td', { class: 'num' }, ext(link.pr(e), '#' + e.pr)),
         el('td', null, e.author ? ext(link.author(e), e.author) : '–'),
         el('td', null, el('span', { class: 'agent' }, e.agent || '–')),
-        window.RF.TRACK_IDS.map(t => el('td', { class: 'num' }, scoreIn(e, t) !== null ? fmtS(scoreIn(e, t)) : '–',
+        // (an earlier season's score, in another unit than the header's, carries its own)
+        window.RF.TRACK_IDS.map(t => el('td', { class: 'num' }, scoreIn(e, t) !== null ? fmtS(scoreIn(e, t), unitOf(e, trackOf(t))) : '–',
+          scoreIn(e, t) !== null && unitOf(e, trackOf(t)) !== trackOf(t).unit ? [' ', el('small', null, unitOf(e, trackOf(t)))] : null,
           e.record_in.includes(t) ? el('span', { class: 'rec-mark', title: retiredIn(e, t) ? 'took this track\'s record (retired since)' : 'took this track\'s record' }, retiredIn(e, t) ? ' \u2020' : ' \u2605') : null)),
         el('td', null, timeEl(e.finished || e.queued || e.opened)),
         el('td', null, credit.length ? credit : '–')));
@@ -389,7 +423,7 @@
       el('p', null, `Could not read submissions.json from ${host}: ${err && err.message ? err.message : 'unknown error'}. Check your connection and try again; the data is also on the `,
         ext(link.repo + '/tree/data', 'data branch'), '.'), retry));
     const msg = 'Results unavailable.';
-    document.getElementById('leaders').replaceChildren(el('tr', { class: 'empty-row' }, el('td', { colspan: 6 + trackOf(track).parts.length }, msg)));
+    document.getElementById('leaders').replaceChildren(el('tr', { class: 'empty-row' }, el('td', { colspan: 8 }, msg)));
     document.getElementById('subs').replaceChildren(el('tr', { class: 'empty-row' }, el('td', { colspan: 9 }, msg)));
     document.getElementById('queue').replaceChildren(el('li', { class: 'empty-li' }, el('span', { class: 'empty' }, msg)));
     document.getElementById('chart').replaceChildren();

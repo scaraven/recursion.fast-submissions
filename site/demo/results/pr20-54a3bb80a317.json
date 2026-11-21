@@ -1,6 +1,7 @@
 {
  "schema": "recursion.fast/v6/result-1",
  "verdict": "REJECT",
+ "reject_stage": "certificate",
  "comparable": false,
  "truncated": false,
  "harness_commit": "c0dec0dec0dec0dec0dec0dec0dec0dec0dec0de",

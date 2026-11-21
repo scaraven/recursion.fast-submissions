@@ -48,8 +48,9 @@
         el('span', null, RF.STATUS_INFO[e.status][1])),
       e.title ? el('p', { class: 'title' }, el('span', { class: 'muted' }, 'Pull request title (written by the submitter): '), e.title) : null));
 
-    // numbers: each track's score, with its components and its comparison with the track's record
-    // (v6: one S in both tracks, or in `final` only; the reasons say why not in `every`)
+    // numbers: each track's score, with its own components (P_total and its own priced proof's size) and
+    // its comparison with the track's record (v6: S in `final`, S_every in `every`, or `final` only;
+    // the reasons say why not in `every`; a result of the first v6 rules has one S in both)
     const sc = e.score;
     const recOf = id => { const r = rel.byId.get(id); return r ? subLink(r) : el('code', null, id); };
     let shownField = null;    // a track scored by the field the previous track showed gets no second metrics row
@@ -59,22 +60,25 @@
       const field = sc.tracks ? sc.tracks[tr.id] : null;
       const repeat = field !== null && field === shownField;
       shownField = field;
+      // how this result is priced in the track (this season: the proof size in bytes, the score in
+      // s\u00b7B; an earlier v6 season's result: its exponential factor of the size, the score in seconds)
+      const pt = RF.pricedBy(tr, RF.partsIn(sc, tr.id));
       const m = (lbl, val, unit, note) => el('div', null, el('span', { class: 'lbl' }, lbl),
-        el('span', { class: 'val' }, fmtPart(val, unit), unit === 's' ? [' ', el('small', null, 's')] : null),
+        el('span', { class: 'val' }, unit === 'score' ? fmtS(val, pt.unit) : fmtPart(val, unit),
+          unit === 's' ? [' ', el('small', null, 's')] : unit === 'score' ? [' ', el('small', null, RF.unitNode(pt.unit))] : null),
         note ? el('span', { class: 'lbl' }, note) : null);
       const took = e.record_in.includes(tr.id);
-      parts.push(el('h2', { class: 'track-head' }, tr.label, ' ', el('span', { class: 'tab-formula' }, repeat ? `the same S = ${fmtS(v)} s` : tr.formula),
+      parts.push(el('h2', { class: 'track-head' }, tr.label, ' ', el('span', { class: 'tab-formula' }, repeat ? `the same ${field} = ${fmtS(v, pt.unit)} ${pt.unit}` : pt.formula),
         took ? [' ', el('span', { class: 'badge ' + (retiredIn(e, tr.id) ? 'st-retired' : 'st-record') }, retiredIn(e, tr.id) ? 'record, retired' : 'took the record')] : null));
-      if (!repeat) parts.push(el('div', { class: 'metrics m' + (tr.parts.length + 1), role: 'group', 'aria-label': tr.label + ' score' },
-        m('Score ' + tr.sym, v, 's', 'lower is better'),
-        tr.parts.map(([k, label, unit, note]) => m(label, sc[k], unit, note || (k === 'P_total_s' ? 'the eight steps\' total time'
-          : k === 'size_factor' ? '2^(|π₈| / 1 MiB)' : k === 'final_pi_bytes' ? 'the final proof' : null)))));
+      if (!repeat) parts.push(el('div', { class: 'metrics m' + (pt.parts.length + 1), role: 'group', 'aria-label': tr.label + ' score' },
+        m('Score ' + (field || tr.sym), v, 'score', 'lower is better'),
+        pt.parts.map(([k, label, unit, note]) => m(label, RF.partsIn(sc, tr.id)[k], unit, note || pt.desc[k] || null))));
       const a = e.against[tr.id];
       if (a) {
         const g = gainOf(e, tr.id);
         parts.push(el('p', { class: 'against' },
           el('strong', null, a.beats ? `Beat the standing ${tr.label.toLowerCase()} record.` : `Did not beat the standing ${tr.label.toLowerCase()} record.`), ' ',
-          `${tr.sym} = ${fmtS(a.S !== null ? a.S : v)} s against ${fmtS(a.S_record)} s of the record `, recOf(a.record),
+          `${field || tr.sym} = ${fmtS(a.S !== null ? a.S : v, pt.unit)} ${pt.unit} against ${fmtS(a.S_record, pt.unit)} ${pt.unit} of the record `, recOf(a.record),
           `, at the same contract pin: gain = ${pct(g)}. A record needs a gain of more than ${marginText(data)}.`));
       } else if (took && !e.record_of[tr.id]) {
         parts.push(el('p', { class: 'against' }, e.port_of ? `The previous pin's ${tr.label.toLowerCase()} record, re-run at a new contract pin before any other entry.`
@@ -117,9 +121,17 @@
       e.port_of ? dt('Port of', rel.byId.get(e.port_of) ? subLink(rel.byId.get(e.port_of)) : el('code', null, e.port_of)) : null);
     const links = el('ul', { class: 'links' },
       el('li', null, ext(link.pr(e), 'Pull request')),
-      e.run_url ? el('li', null, ext(e.run_url, 'Actions run')) : null,
+      e.run_url ? el('li', null, ext(e.run_url, e.confirmation && e.confirmation.score_run ? `Actions run (the ${e.confirmation.score_run === 'first' ? 'first' : 'confirmation'} run)` : 'Actions run')) : null,
       link.code(e) ? el('li', null, ext(link.code(e), 'Code at ' + e.tag)) : null,
-      link.result(e) ? el('li', null, el('a', { href: link.result(e), rel: 'noopener noreferrer' }, 'Result JSON')) : null);
+      link.result(e) ? el('li', null, el('a', { href: link.result(e), rel: 'noopener noreferrer' }, e.confirmation && e.confirmation.score_run ? `Result JSON (the ${e.confirmation.score_run === 'first' ? 'first' : 'confirmation'} run)` : 'Result JSON')) : null,
+      ...(() => {
+        // a record candidate's other run: its Actions run and its result JSON
+        const c = e.confirmation;
+        if (!c) return [];
+        const other = c.score_run === 'first' ? [c.run, c.result, 'confirmation run'] : [c.first_run, c.first_result, 'first run'];
+        return [other[0] && other[0] !== e.run_url ? el('li', null, ext(other[0], `Actions run (the ${other[2]})`)) : null,
+          other[1] && other[1] !== e.result ? el('li', null, el('a', { href: link.resultAt(other[1]), rel: 'noopener noreferrer' }, `Result JSON (the ${other[2]})`)) : null];
+      })());
     parts.push(el('section', { class: 'panel', 'aria-labelledby': 'h-facts' }, el('h2', { id: 'h-facts' }, 'Details'), facts));
     parts.push(el('section', { class: 'panel', 'aria-labelledby': 'h-links' }, el('h2', { id: 'h-links' }, 'Links'), links));
 
@@ -154,11 +166,16 @@
     if (sc) {
       // the fields the track sections show; an earlier season's score (in no current track) shows them all here
       const inTrack = RF.TRACKS.some(t => scoreIn(e, t.id) !== null);
-      const shown = new Set(inTrack ? ['S', 'tracks', ...RF.TRACKS.flatMap(t => t.parts.map(p => p[0])), ...Object.values(sc.tracks || {})] : ['tracks']);
+      // (this season's size factors are the proof sizes the track sections show; an earlier v6
+      // season's factors are shown in them too)
+      const shown = new Set(inTrack ? ['S', 'tracks', 'by_track', ...RF.TRACKS.flatMap(t => [...t.parts.map(p => p[0]), t.factor]), ...Object.values(sc.tracks || {})] : ['tracks', 'by_track']);
       const rest = Object.entries(sc).filter(([k]) => !shown.has(k));
-      if (rest.length) {
+      // a confirmed record whose tracks keep different runs: the other run's numbers, per track
+      const other = sc.by_track ? Object.entries(sc.by_track).flatMap(([t, o]) => Object.entries(o).map(([k, v]) => [`${k} (${t}: the other run)`, v])) : [];
+      if (rest.length || other.length) {
         const dl = el('dl', { class: 'kv' });
-        for (const [k, v] of rest) dl.append(...dt(el('code', null, k), typeof v === 'number' ? String(+v.toPrecision(6)) : String(v)));
+        const show = x => typeof x === 'number' ? String(+x.toPrecision(6)) : String(x);
+        for (const [k, v] of rest.concat(other)) dl.append(...dt(el('code', null, k), Array.isArray(v) ? v.map(show).join(', ') : show(v)));
         parts.push(el('section', { class: 'panel' }, el('details', { class: 'readme' }, el('summary', null, 'Every measured number'), dl)));
       }
     }

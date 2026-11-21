@@ -19,6 +19,10 @@ import rfqueue  # noqa: E402
 
 REPO = "scaraven/recursion.fast-submissions"
 PIN = "c0dec0dec0dec0dec0dec0dec0dec0dec0dec0de"   # fictional
+# The unit of `make_result`'s `S`: 2^20 s·B, so S = 10.0 is a realistic score, 10,485,760 s·B
+# (P_total 37.4 s times a 280,000-byte final proof). A power of two, so scaling is exact: every
+# comparison, gain and decision is the unscaled numbers' own.
+MS = 1 << 20
 GENV = {"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
         "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t", "GIT_AUTHOR_DATE": "2026-11-03T00:00:00Z",
         "GIT_COMMITTER_DATE": "2026-11-03T00:00:00Z"}
@@ -75,11 +79,12 @@ class FakeGitHub:
     def main(self):
         return git(self.bare, "rev-parse", "refs/heads/main")
 
-    def open_pr(self, n, author, files, title="entry", draft=False, labels=(), modes=None, base="main"):
+    def open_pr(self, n, author, files, title="entry", draft=False, labels=(), modes=None, base="main", head_owner=None):
         sha = commit_tree(self.bare, self.main(), files, f"PR {n}", modes)
         git(self.bare, "update-ref", f"refs/pull/{n}/head", sha)
         self.prs[n] = {"number": n, "state": "open", "draft": draft, "title": title, "user": {"login": author},
-                       "head": {"sha": sha}, "base": {"ref": base}, "labels": [{"name": x} for x in labels],
+                       "head": {"sha": sha, "repo": {"owner": {"login": head_owner or author}}}, "base": {"ref": base},
+                       "labels": [{"name": x} for x in labels],
                        "created_at": "2026-11-03T00:00:00Z", "_base_sha": self.main()}
         return sha
 
@@ -140,35 +145,50 @@ class FakeGitHub:
 
 
 def make_result(run_id, verdict="ACCEPT", S=1.0, comparable=True, harness=PIN, prover="a" * 64, machine_ok=True,
-                organiser_error=None, stream=True, every=True, legacy=False):
+                organiser_error=None, stream=True, every=True, legacy=False, reject_stage=None):
     """A result as the core's aggregate.py writes it (the fields the bot reads). `comparable=False`:
     a truncated stream; `machine_ok=False`: another machine's fingerprint, the organiser's ERROR;
     `stream=False`: no stream recorded (a REJECT at the certificate, so no benchmark part, or inside
-    the stream). `S` is the score of both tracks; `every=False`: eligible for `final` only (an
-    intermediate output not accepted), with the core's `tracks_reason`; `legacy`: a score without
-    `tracks` (an earlier season's core), the sum alone."""
+    the stream). `S` is the score of `final` in units of `MS` (2^20 s·B: P_total · |π_16|, |π_16|
+    in bytes, so in seconds · bytes; S = 7.0 to 10.0 is P_total 26 s to 37 s); `S_every`, the score of `every`, prices the largest proof (an intermediate one 80,000
+    bytes larger than the final one), so it is `S` times a fixed factor, 360000 / 280000, and the
+    two tracks rank alike; `every=False`: eligible for
+    `final` only (an intermediate output not accepted), with the core's `tracks_reason`; `legacy`: a
+    score without `tracks` (an earlier season's core), the sum alone, `S` in seconds as given; `reject_stage`: a REJECT's
+    stage, the core's top-level field (absent by default; with a stream, the stream's `leaf_data`
+    marks the result as this rules' core's, so a REJECT without a stage is final)."""
     fp = "f" * 64
     if not machine_ok:
         verdict, comparable = "ERROR", False
     r = {"schema": "recursion.fast/v6/result-1", "verdict": verdict, "comparable": comparable,
          "truncated": not comparable and machine_ok, "harness_commit": harness, "job": f"{REPO}/actions/runs/{run_id}/attempts/1",
          "machine": {"fingerprint": fp if machine_ok else "e" * 64, "expected": fp, "matches": machine_ok and stream},
-         "stream": {"shape": {"M": 8, "n": 1 << 22}, "truncated": not comparable and machine_ok} if stream else None,
+         "stream": {"shape": {"M": 16, "n": 1 << 18}, "leaf_data": {"xof": "shake256", "domain": "recursion.fast/leaf-data/v1"},
+                    "truncated": not comparable and machine_ok} if stream else None,
          "runner": {"name": "rf-bench-1", "environment": "self-hosted", "labels": ["rf-bench"]},
          "reasons": ([] if verdict == "ACCEPT" else ["the entry failed: `boom` @someone"] if machine_ok else
                      [f"organiser ERROR: the machine fingerprint is mismatched (fingerprint {'e' * 64}, the season expects {fp})"]),
          "prover_sha256": prover}
     if not machine_ok or organiser_error:
         r["organiser_error"] = organiser_error or "fingerprint"
+    if reject_stage is not None:
+        r["reject_stage"] = reject_stage
     if verdict in ("ACCEPT", "PROVISIONAL"):
-        pi = 280000
-        f = 2 ** (pi / 2 ** 20)
+        pi, pi_max = 280000, 360000
+        f, fe = pi, pi_max
+        if not legacy:
+            S = S * MS
+        P = S / f
         if legacy:
             r["score"] = {"S": S, "P_bar": S * 0.8, "V_bar": S * 0.2, "M": 96, "c_P": 1.0}
         else:
-            r["score"] = {"S": S, "P_total_s": S / f, "size_factor": f, "final_pi_bytes": pi, "M": 8, "c_P": 1.0,
-                          "tracks": {"final": "S", "every": "S"} if every else {"final": "S"}}
-            if not every:
+            r["score"] = {"S": S, "P_total_s": P, "size_factor": f, "final_pi_bytes": pi,
+                          "pass_totals_s": [P * 1.004, P, P * 0.998], "median_pass": 2,
+                          "M": 16, "sum_n": 16 << 18, "c_P": 1.0,
+                          "tracks": {"final": "S", "every": "S_every"} if every else {"final": "S"}}
+            if every:
+                r["score"].update(S_every=P * fe, size_factor_every=fe, max_pi_bytes=pi_max)
+            else:
                 r["score"]["tracks_reason"] = {"every": "output 3 rejected by acc"}
     return r
 
@@ -344,6 +364,12 @@ def main():
         print("records.json:", rec["core"][:8], {t: r and r["id"] for t, r in rec["record"].items()},
               "history:", {t: [h["id"] + ":" + h["status"] for h in hs] for t, hs in rec["history"].items()})
         print("main roots:", git(w.bare, "ls-tree", "--name-only", "main", "submissions/").split())
+        # copies: another author's root with an earlier entry's prover/ (new NOTES, a new root name) is
+        # invalid, and so is a PR opened from another user's branch
+        g.open_pr(17, "mallory", good_root("mine", "16", notes="# mine\n\nAgent: x\n"))
+        print("a copied prover/:", w.intake(17), "|", w.state()["submissions"][-1]["reasons"][0])
+        g.open_pr(18, "mallory", good_root("theirs", "18"), head_owner="heidi")
+        print("another user's branch:", w.intake(18), "|", w.state()["submissions"][-1]["reasons"][0][:90])
         print("comments:", len(g.comments), "statuses:", len(g.status_log), "dispatches:", len(g.dispatches))
         print("queue:", [(x["id"], x["status"]) for x in w.state()["submissions"]])
     finally:

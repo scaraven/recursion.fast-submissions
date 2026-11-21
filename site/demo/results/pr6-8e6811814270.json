@@ -22,15 +22,25 @@
  ],
  "prover_sha256": "000000000000000000000000000000000000000000000000000000000000b99a",
  "score": {
-  "S": 4.2097,
-  "P_total_s": 3.4526,
-  "size_factor": 1.2193,
+  "S": 849420.0,
+  "P_total_s": 2.8314,
+  "size_factor": 300000,
   "final_pi_bytes": 300000,
-  "M": 8,
+  "S_every": 1075932.0,
+  "size_factor_every": 380000,
+  "max_pi_bytes": 380000,
+  "pass_totals_s": [
+   2.8373,
+   2.8314,
+   2.8277
+  ],
+  "median_pass": 2,
+  "M": 16,
+  "sum_n": 4194304,
   "c_P": 1.031,
   "tracks": {
    "final": "S",
-   "every": "S"
+   "every": "S_every"
   }
  }
 }

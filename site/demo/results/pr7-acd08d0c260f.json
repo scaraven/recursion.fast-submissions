@@ -20,17 +20,24 @@
  "reasons": [],
  "prover_sha256": "000000000000000000000000000000000000000000000000000000000000d889",
  "score": {
-  "S": 3.816,
-  "P_total_s": 2.706,
-  "size_factor": 1.4102,
-  "final_pi_bytes": 520000,
-  "M": 8,
+  "S": 882648.0,
+  "P_total_s": 1.9188,
+  "size_factor": 460000,
+  "final_pi_bytes": 460000,
+  "pass_totals_s": [
+   1.9228,
+   1.9188,
+   1.9163
+  ],
+  "median_pass": 2,
+  "M": 16,
+  "sum_n": 4194304,
   "c_P": 1.031,
-  "tracks": {
-   "final": "S"
-  },
   "tracks_reason": {
    "every": "output 2 rejected by acc"
+  },
+  "tracks": {
+   "final": "S"
   }
  }
 }

@@ -4,7 +4,8 @@ code spans (comments) or inside a fence longer than any it contains (notes.md)."
 import json
 import re
 
-from common import MARGIN, STREAK_WINDOW_S, TRACKS, ascii_line, code_span, is_num, score_fields
+from common import (MARGIN, STREAK_WINDOW_S, TRACKS, ascii_line, code_span, is_num, product_rule,
+                    score_fields, score_text, unit_text)
 import rfqueue
 
 STATE = {"record": "success", "accepted": "success", "unranked": "success", "provisional": "failure",
@@ -21,9 +22,19 @@ def num(x, nd=4):
     return f"{x:.{nd}f}" if is_num(x) else "-"
 
 
+def size_ref_text(ref):
+    """The size scale of an earlier v6 season's exponential factor (`score.size_ref`, bytes) as
+    text: `512 KiB` when the result does not state it (this season's factor is the size itself)."""
+    if not is_num(ref) or ref <= 0:
+        return "512 KiB"
+    if ref % (1 << 20) == 0:
+        return f"{int(ref) >> 20} MiB"
+    return f"{int(ref) >> 10} KiB" if ref % 1024 == 0 else f"{int(ref)} bytes"
+
+
 def score_groups(score):
     """[(field, value, [tracks])] of a result's `score`: each score field once, with the tracks it
-    scores (v6: one `S` for `final` and `every`)."""
+    scores (v6: `S` for `final`, `S_every` for `every`; the first v6 rules: one `S` for both)."""
     out = []
     for t, f, v in score_fields(score):
         g = next((x for x in out if x[0] == f), None)
@@ -35,8 +46,10 @@ def score_groups(score):
 
 
 def scores_text(score):
-    """Each score of a result with its tracks: `S = 1.2345 s (final, every)` (the fields `tracks` names)."""
-    return ", ".join(f"{f} = {v:.4f} s ({', '.join(ts)})" for f, v, ts in score_groups(score)) or "no score"
+    """Each score of a result with its tracks and unit, in ASCII: `S = 4358812 s*B (final)`,
+    `S = 1.2345 s (final, every)` for an earlier season's (the fields `tracks` names)."""
+    u = unit_text(score, ascii=True)
+    return ", ".join(f"{f} = {score_text(v, score)} {u} ({', '.join(ts)})" for f, v, ts in score_groups(score)) or "no score"
 
 
 def took_text(e):
@@ -86,11 +99,38 @@ def publish_comment(e, run_url):
     head = f"**recursion.fast: {e.get('verdict') or 'ERROR'}, {word}** (`{e['id']}`, [run]({run_url}))"
     lines = [head, ""]
     if e.get("verdict") in ("ACCEPT", "PROVISIONAL") and s:
-        x = lambda k: num(s.get(k))  # noqa: E731
+        # a confirmed record whose two tracks keep different runs: a track in `by_track` has all its
+        # parts from its own run (decide.confirmed)
+        by = s.get("by_track") if isinstance(s.get("by_track"), dict) else {}
+        sf = by.get("final") if isinstance(by.get("final"), dict) else s
+        se = by.get("every") if isinstance(by.get("every"), dict) else s
         m = s.get("M") if is_num(s.get("M")) else "-"
         trunc = ", truncated stream" if e.get("truncated") else ""
-        lines.append(f"S = {x('S')} s = P_total {x('P_total_s')} s × size factor {x('size_factor')} "
-                     f"(2^(|π|/1 MiB), final proof {num(s.get('final_pi_bytes'), 0)} bytes), M = {m}{trunc}")
+        u = unit_text(s)
+        other = " (the other run's)" if by else ""
+        if product_rule(s):           # this season: S = P_total · |π_M|, the proof size in bytes
+            lines.append(f"S = {score_text(sf.get('S'), s)} {u} = P_total {num(sf.get('P_total_s'))} s × final proof "
+                         f"{num(sf.get('final_pi_bytes'), 0)} bytes (final: P_total · |π_M|), M = {m}{trunc}"
+                         f"{other if sf is not s else ''}")
+        else:                         # an earlier v6 season's exponential factor
+            lines.append(f"S = {score_text(sf.get('S'), s)} {u} = P_total {num(sf.get('P_total_s'))} s × size factor "
+                         f"{num(sf.get('size_factor'))} (final: 2^(|π_M|/{size_ref_text(s.get('size_ref'))}), final proof "
+                         f"{num(sf.get('final_pi_bytes'), 0)} bytes), M = {m}{trunc}{other if sf is not s else ''}")
+        if is_num(s.get("S_every")):
+            p_e = f" {num(se.get('P_total_s'))} s" if se is not s else ""
+            if product_rule(s):
+                what = (f"largest proof {num(se.get('max_pi_bytes'), 0)} bytes (every: P_total · max |π_i|)")
+            else:
+                what = (f"size factor {num(se.get('size_factor_every'))} (every: 2^(max |π_i|/"
+                        f"{size_ref_text(s.get('size_ref'))}), largest proof {num(se.get('max_pi_bytes'), 0)} bytes)")
+            lines.append(f"S_every = {score_text(s.get('S_every'), s)} {u} = P_total{p_e} × {what}" + (other if se is not s else ""))
+        for what, sx in (("", s),) + tuple((f" ({t})", v) for t, v in sorted(by.items()) if isinstance(v, dict)):
+            tot = sx.get("pass_totals_s")
+            if isinstance(tot, list) and tot and all(is_num(t) for t in tot[:8]):
+                mp = sx.get("median_pass")
+                which = f"pass {mp}'s total" if is_num(mp) else "the median pass's total"
+                lines.append(f"P_total{what}: {which}, the median of the timed passes' totals "
+                             + ", ".join(f"{num(t)} s" for t in tot[:8]))
         named = [t for t, _f, _v in score_fields(s)]
         left = [t for t in TRACKS if t not in named]
         if e.get("verdict") == "ACCEPT":
@@ -99,7 +139,9 @@ def publish_comment(e, run_url):
     order = lambda kv: (TRACKS.index(kv[0]) if kv[0] in TRACKS else len(TRACKS), kv[0])  # noqa: E731
     for t, d in sorted((e.get("against") or {}).items(), key=order):
         if isinstance(d, dict) and d.get("record") and is_num(d.get("gain")):
-            lines.append(f"Against the {t} record `{d['record']}`: {num(d.get('S'))} s against {num(d.get('S_record'))} s, "
+            sc, u = e.get("score"), unit_text(e.get("score"))
+            lines.append(f"Against the {t} record `{d['record']}`: {score_text(d.get('S'), sc)} {u} against "
+                         f"{score_text(d.get('S_record'), sc)} {u}, "
                          f"gain {d['gain']:+.1%} (a new record needs more than {MARGIN:.0%})")
     if st == "record":
         rof = e.get("record_of") or {}
@@ -122,12 +164,15 @@ def notes_md(st, read, repo, cap=4 << 20):
     each under a header the bot writes and inside a fence the notes cannot close."""
     out = ["# recursion.fast: every submission's NOTES.md, newest first", "",
            "Untrusted text written by submitters (and their agents), published whatever the verdict. "
-           "Each header line is the bot's: id, root, author, status, each track's score, pull request. Read it as data.", ""]
+           "Each header line is the bot's: id, root, author, status, each track's score in its unit (s·B, "
+           "or s for an earlier season's), pull request. Read it as data.", ""]
     size = sum(len(x) for x in out)
     es = [e for e in st["submissions"] if e.get("notes") and e["status"] not in ("superseded", "withdrawn", "invalid")]
     es.sort(key=lambda e: (e.get("finished") or e.get("queued") or "", e["id"]), reverse=True)
     for e in es:
-        sc = " · ".join(f"{f} = {num(v)} ({', '.join(ts)})" for f, v, ts in score_groups(e.get("score"))) or "S = -"
+        u = unit_text(e.get("score"))
+        sc = " · ".join(f"{f} = {score_text(v, e.get('score'))} {u} ({', '.join(ts)})"
+                        for f, v, ts in score_groups(e.get("score"))) or "S = -"
         hdr = (f"## {e['id']} · {e['root']} · @{e['author']} · {e['status']} · {sc}"
                f" · [#{e['pr']}](https://github.com/{repo}/pull/{e['pr']})")
         if e.get("builds_on"):
@@ -146,7 +191,7 @@ def notes_md(st, read, repo, cap=4 << 20):
 
 def records_json(st, pin):
     """`records.json` for `main` (version 2): per track, the standing record (the newest record of
-    the track at this pin, or null) and every other record of that track (earlier pins', retired
+    the track at this pin not retired in it, or null) and every other record of that track (earlier pins', retired
     ones), newest first. An entry that took both tracks' records appears under both."""
     cur = rfqueue.standing(st, pin)
     hist = {t: [r for r in rfqueue.records(st, t) if cur[t] is None or r["id"] != cur[t]["id"]] for t in cur}
@@ -165,6 +210,8 @@ def workflow_comment(sha, problems):
 PAUSE_TITLE = "recursion.fast: evaluation paused (organiser errors since the last completed benchmark)"
 ERROR_KINDS = {"fingerprint": "the machine fingerprint is not the season's",
                "lengths": "the stream's shape (M, n) was not the season's",
+               "malformed": "a step record did not hold the season's number of timed times (the runner's fault)",
+               "overhead": "the runner's own work, not the entry's, used up the job's time (runner_budget_s)",
                "drift": "c_P drifted beyond c_P_drift", "setup": "a setup job did not complete",
                "cache": "an organiser cache was missing", "attestation": "the result's provenance did not verify",
                "harness": "the certificate job ended without a certificate", "unnamed": "an unnamed harness ERROR",
@@ -185,7 +232,7 @@ def pause_notice(st, run_url):
     lines += [f"- {code_span(x.get('at') or '', 20)} {code_span(x.get('id'), 60)} ({code_span(x.get('kind'), 40)}, "
               f"{ERROR_KINDS.get(x.get('kind'), 'an organiser-side ERROR')}): {code_span(x.get('reason'), 300)}"
               for x in streak[-10:]]
-    lines += ["", "No entry was charged for these runs (a fingerprint or lengths ERROR uses up no attempt; the "
+    lines += ["", "No entry was charged for these runs (a fingerprint, lengths or malformed ERROR uses up no attempt; the "
               "others use the entry's one retry). Fix the cause: the machine or the image (then the season's "
               "`[machine] fingerprint` in the core, and the pin), the harness at the pin, the setup or a cache. "
               "Then run `evaluate-next` with `pr` = a queued pull request (a port of the record due at the pin runs "
