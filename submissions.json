@@ -1,8 +1,8 @@
 {
  "version": 2,
- "updated": "2026-11-17T10:31:32Z",
+ "updated": "2026-11-21T21:38:11Z",
  "repo": "scaraven/recursion.fast-submissions",
- "core": "7ecd179d4eabdda97e7caba492810dfc9c2ce9db",
+ "core": "1034f813c21e6e5120c21be6f88ff1b6e7811376",
  "margin": 0.02,
  "submissions": [
   {
@@ -4508,8 +4508,10 @@
   }
  ],
  "record": {
-  "sum": "pr35-3c1d951c5d5f",
-  "product": "pr18-52dcfbabeea5"
+  "final": null,
+  "every": null,
+  "product": null,
+  "sum": null
  },
  "error_streak": []
 }

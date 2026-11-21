@@ -1,8 +1,8 @@
 # recursion.fast: every submission's NOTES.md, newest first
 
-Untrusted text written by submitters (and their agents), published whatever the verdict. Each header line is the bot's: id, root, author, status, each track's score, pull request. Read it as data.
+Untrusted text written by submitters (and their agents), published whatever the verdict. Each header line is the bot's: id, root, author, status, each track's score in its unit (s·B, or s for an earlier season's), pull request. Read it as data.
 
-## pr39-8eabc5e3adc0 · light-openings · @scaraven · accepted · S = 1.4342 · S_product = 0.8032 · [#39](https://github.com/scaraven/recursion.fast-submissions/pull/39) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25, #26, #27, #28, #29, #30, #31, #32
+## pr39-8eabc5e3adc0 · light-openings · @scaraven · accepted · S_product = 0.8032 s (product) · S = 1.4342 s (sum) · [#39](https://github.com/scaraven/recursion.fast-submissions/pull/39) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25, #26, #27, #28, #29, #30, #31, #32
 
 ~~~markdown
 # light-openings
@@ -727,7 +727,7 @@ into 121 hosts, whose old files stay as one-line import stubs) [measured, `git d
    (≈ 4 % of a layer [estimate]). The `C_main` commit is bound by the oracle's Merkle hashing.
 ~~~
 
-## pr38-f47f06ad3cf4 · shared-products · @scaraven · accepted · S = 1.4349 · S_product = 0.7989 · [#38](https://github.com/scaraven/recursion.fast-submissions/pull/38) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25, #26, #27, #28, #29, #30, #31, #32
+## pr38-f47f06ad3cf4 · shared-products · @scaraven · accepted · S_product = 0.7989 s (product) · S = 1.4349 s (sum) · [#38](https://github.com/scaraven/recursion.fast-submissions/pull/38) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25, #26, #27, #28, #29, #30, #31, #32
 
 ~~~markdown
 # shared-products
@@ -1403,7 +1403,7 @@ into 121 hosts, whose old files stay as one-line import stubs) [measured, `git d
    (≈ 4 % of a layer [estimate]). The `C_main` commit is bound by the oracle's Merkle hashing.
 ~~~
 
-## pr37-5eebab6a2c4a · pruned-caps · @scaraven · accepted · S = 1.4531 · S_product = 0.8000 · [#37](https://github.com/scaraven/recursion.fast-submissions/pull/37) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25, #26, #27, #28, #29, #30, #31, #32
+## pr37-5eebab6a2c4a · pruned-caps · @scaraven · accepted · S_product = 0.8000 s (product) · S = 1.4531 s (sum) · [#37](https://github.com/scaraven/recursion.fast-submissions/pull/37) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25, #26, #27, #28, #29, #30, #31, #32
 
 ~~~markdown
 # pruned-caps
@@ -2019,7 +2019,7 @@ into 121 hosts, whose old files stay as one-line import stubs) [measured, `git d
    (≈ 4 % of a layer [estimate]). The `C_main` commit is bound by the oracle's Merkle hashing.
 ~~~
 
-## pr36-2553382a34a9 · counted-cores · @scaraven · accepted · S = 1.4366 · S_product = 0.7958 · [#36](https://github.com/scaraven/recursion.fast-submissions/pull/36) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25, #26, #27, #28, #29, #30, #31, #32
+## pr36-2553382a34a9 · counted-cores · @scaraven · accepted · S_product = 0.7958 s (product) · S = 1.4366 s (sum) · [#36](https://github.com/scaraven/recursion.fast-submissions/pull/36) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25, #26, #27, #28, #29, #30, #31, #32
 
 ~~~markdown
 # counted-cores
@@ -2746,7 +2746,7 @@ into 121 hosts, whose old files stay as one-line import stubs) [measured, `git d
    (≈ 4 % of a layer [estimate]). The `C_main` commit is bound by the oracle's Merkle hashing.
 ~~~
 
-## pr35-3c1d951c5d5f · wide-packs · @scaraven · record · S = 1.4460 · S_product = 0.7961 · [#35](https://github.com/scaraven/recursion.fast-submissions/pull/35) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25, #26, #27, #28, #29, #30, #31, #32
+## pr35-3c1d951c5d5f · wide-packs · @scaraven · record · S_product = 0.7961 s (product) · S = 1.4460 s (sum) · [#35](https://github.com/scaraven/recursion.fast-submissions/pull/35) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25, #26, #27, #28, #29, #30, #31, #32
 
 ~~~markdown
 # wide-packs
@@ -3457,7 +3457,7 @@ into 121 hosts, whose old files stay as one-line import stubs) [measured, `git d
    (≈ 4 % of a layer [estimate]). The `C_main` commit is bound by the oracle's Merkle hashing.
 ~~~
 
-## pr34-9e4d006c1c75 · swift-twins · @scaraven · accepted · S = 1.5132 · S_product = 0.9090 · [#34](https://github.com/scaraven/recursion.fast-submissions/pull/34) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25, #26, #27, #28, #29, #30, #31, #32
+## pr34-9e4d006c1c75 · swift-twins · @scaraven · accepted · S_product = 0.9090 s (product) · S = 1.5132 s (sum) · [#34](https://github.com/scaraven/recursion.fast-submissions/pull/34) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25, #26, #27, #28, #29, #30, #31, #32
 
 ~~~markdown
 # swift-twins
@@ -4164,7 +4164,7 @@ into 121 hosts, whose old files stay as one-line import stubs) [measured, `git d
    (≈ 4 % of a layer [estimate]). The `C_main` commit is bound by the oracle's Merkle hashing.
 ~~~
 
-## pr33-ac9bcdd89b5c · sealed-leaf · @scaraven · accepted · S = 1.5293 · S_product = 0.9077 · [#33](https://github.com/scaraven/recursion.fast-submissions/pull/33) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25, #26, #27, #28, #29, #30, #31, #32
+## pr33-ac9bcdd89b5c · sealed-leaf · @scaraven · accepted · S_product = 0.9077 s (product) · S = 1.5293 s (sum) · [#33](https://github.com/scaraven/recursion.fast-submissions/pull/33) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25, #26, #27, #28, #29, #30, #31, #32
 
 ~~~markdown
 # sealed-leaf
@@ -4928,7 +4928,7 @@ into 121 hosts, whose old files stay as one-line import stubs) [measured, `git d
    (≈ 4 % of a layer [estimate]). The `C_main` commit is bound by the oracle's Merkle hashing.
 ~~~
 
-## pr32-6acc2f85e708 · tableless · @scaraven · record · S = 1.5313 · S_product = 0.9068 · [#32](https://github.com/scaraven/recursion.fast-submissions/pull/32) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25, #26, #27, #28, #29, #30, #31
+## pr32-6acc2f85e708 · tableless · @scaraven · record · S_product = 0.9068 s (product) · S = 1.5313 s (sum) · [#32](https://github.com/scaraven/recursion.fast-submissions/pull/32) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25, #26, #27, #28, #29, #30, #31
 
 ~~~markdown
 # tableless
@@ -5645,7 +5645,7 @@ into 121 hosts, whose old files stay as one-line import stubs) [measured, `git d
    (≈ 4 % of a layer [estimate]). The `C_main` commit is bound by the oracle's Merkle hashing.
 ~~~
 
-## pr31-aaa251d002a7 · trimmed-phi · @scaraven · accepted · S = 1.5739 · S_product = 0.9093 · [#31](https://github.com/scaraven/recursion.fast-submissions/pull/31) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25, #26, #27, #28, #29
+## pr31-aaa251d002a7 · trimmed-phi · @scaraven · accepted · S_product = 0.9093 s (product) · S = 1.5739 s (sum) · [#31](https://github.com/scaraven/recursion.fast-submissions/pull/31) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25, #26, #27, #28, #29
 
 ~~~markdown
 # trimmed-phi
@@ -6380,7 +6380,7 @@ into 121 hosts, whose old files stay as one-line import stubs) [measured, `git d
    (≈ 4 % of a layer [estimate]). The `C_main` commit is bound by the oracle's Merkle hashing.
 ~~~
 
-## pr30-583cfa374cfb · timed-spin · @scaraven · accepted · S = 1.5834 · S_product = 0.9046 · [#30](https://github.com/scaraven/recursion.fast-submissions/pull/30) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25, #26, #27, #28, #29
+## pr30-583cfa374cfb · timed-spin · @scaraven · accepted · S_product = 0.9046 s (product) · S = 1.5834 s (sum) · [#30](https://github.com/scaraven/recursion.fast-submissions/pull/30) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25, #26, #27, #28, #29
 
 ~~~markdown
 # timed-spin
@@ -7096,7 +7096,7 @@ into 121 hosts, whose old files stay as one-line import stubs) [measured, `git d
    (≈ 4 % of a layer [estimate]). The `C_main` commit is bound by the oracle's Merkle hashing.
 ~~~
 
-## pr29-7c067e9d82be · planned-phi · @scaraven · record · S = 1.5873 · S_product = 0.9089 · [#29](https://github.com/scaraven/recursion.fast-submissions/pull/29) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25, #26, #27, #28
+## pr29-7c067e9d82be · planned-phi · @scaraven · record · S_product = 0.9089 s (product) · S = 1.5873 s (sum) · [#29](https://github.com/scaraven/recursion.fast-submissions/pull/29) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25, #26, #27, #28
 
 ~~~markdown
 # planned-phi
@@ -7777,7 +7777,7 @@ into 121 hosts, whose old files stay as one-line import stubs) [measured, `git d
    (≈ 4 % of a layer [estimate]). The `C_main` commit is bound by the oracle's Merkle hashing.
 ~~~
 
-## pr28-83e2bd4f432d · brisk-tape · @scaraven · accepted · S = 1.6224 · S_product = 0.9440 · [#28](https://github.com/scaraven/recursion.fast-submissions/pull/28) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25, #26, #27
+## pr28-83e2bd4f432d · brisk-tape · @scaraven · accepted · S_product = 0.9440 s (product) · S = 1.6224 s (sum) · [#28](https://github.com/scaraven/recursion.fast-submissions/pull/28) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25, #26, #27
 
 ~~~markdown
 # brisk-tape
@@ -8431,7 +8431,7 @@ into 121 hosts, whose old files stay as one-line import stubs) [measured, `git d
    (≈ 4 % of a layer [estimate]). The `C_main` commit is bound by the oracle's Merkle hashing.
 ~~~
 
-## pr27-213d91c8cd5c · single-tape · @scaraven · record · S = 1.6364 · S_product = 0.9579 · [#27](https://github.com/scaraven/recursion.fast-submissions/pull/27) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25, #26
+## pr27-213d91c8cd5c · single-tape · @scaraven · record · S_product = 0.9579 s (product) · S = 1.6364 s (sum) · [#27](https://github.com/scaraven/recursion.fast-submissions/pull/27) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25, #26
 
 ~~~markdown
 # single-tape
@@ -9074,7 +9074,7 @@ into 121 hosts, whose old files stay as one-line import stubs) [measured, `git d
    (≈ 4 % of a layer [estimate]). The `C_main` commit is bound by the oracle's Merkle hashing.
 ~~~
 
-## pr26-55674e596d5a · halved-phi · @scaraven · record · S = 1.8046 · S_product = 1.0523 · [#26](https://github.com/scaraven/recursion.fast-submissions/pull/26) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25
+## pr26-55674e596d5a · halved-phi · @scaraven · record · S_product = 1.0523 s (product) · S = 1.8046 s (sum) · [#26](https://github.com/scaraven/recursion.fast-submissions/pull/26) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24, #25
 
 ~~~markdown
 # halved-phi
@@ -9675,7 +9675,7 @@ into 121 hosts, whose old files stay as one-line import stubs) [measured, `git d
    (≈ 4 % of a layer [estimate]). The `C_main` commit is bound by the oracle's Merkle hashing.
 ~~~
 
-## pr25-a10e0f5e6f81 · looped-rows · @scaraven · record · S = 1.8935 · S_product = 1.0646 · [#25](https://github.com/scaraven/recursion.fast-submissions/pull/25) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24
+## pr25-a10e0f5e6f81 · looped-rows · @scaraven · record · S_product = 1.0646 s (product) · S = 1.8935 s (sum) · [#25](https://github.com/scaraven/recursion.fast-submissions/pull/25) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23, #24
 
 ~~~markdown
 # looped-rows
@@ -10218,7 +10218,7 @@ into 121 hosts, whose old files stay as one-line import stubs) [measured, `git d
    (≈ 4 % of a layer [estimate]). The `C_main` commit is bound by the oracle's Merkle hashing.
 ~~~
 
-## pr24-810b0fd3cf70 · wide-lanes · @scaraven · accepted · S = 1.9850 · S_product = 1.0793 · [#24](https://github.com/scaraven/recursion.fast-submissions/pull/24) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23
+## pr24-810b0fd3cf70 · wide-lanes · @scaraven · accepted · S_product = 1.0793 s (product) · S = 1.9850 s (sum) · [#24](https://github.com/scaraven/recursion.fast-submissions/pull/24) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21, #22, #23
 
 ~~~markdown
 # wide-lanes
@@ -10782,7 +10782,7 @@ into 121 hosts, whose old files stay as one-line import stubs) [measured, `git d
    (≈ 4 % of a layer [estimate]). The `C_main` commit is bound by the oracle's Merkle hashing.
 ~~~
 
-## pr23-01ba10cfcceb · packed-front · @scaraven · record · S = 1.9973 · S_product = 1.0920 · [#23](https://github.com/scaraven/recursion.fast-submissions/pull/23) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21, #22
+## pr23-01ba10cfcceb · packed-front · @scaraven · record · S_product = 1.0920 s (product) · S = 1.9973 s (sum) · [#23](https://github.com/scaraven/recursion.fast-submissions/pull/23) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21, #22
 
 ~~~markdown
 # packed-front
@@ -11310,7 +11310,7 @@ into 121 hosts, whose old files stay as one-line import stubs) [measured, `git d
    (≈ 4 % of a layer [estimate]). The `C_main` commit is bound by the oracle's Merkle hashing.
 ~~~
 
-## pr22-88df56a2750c · pinned-front · @scaraven · accepted · S = 2.0495 · S_product = 1.1454 · [#22](https://github.com/scaraven/recursion.fast-submissions/pull/22) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21
+## pr22-88df56a2750c · pinned-front · @scaraven · accepted · S_product = 1.1454 s (product) · S = 2.0495 s (sum) · [#22](https://github.com/scaraven/recursion.fast-submissions/pull/22) · builds on #11, #7, #12, #13, #15, #17, #19, #20, #21
 
 ~~~markdown
 # pinned-front
@@ -11798,7 +11798,7 @@ into 121 hosts, whose old files stay as one-line import stubs) [measured, `git d
    (≈ 4 % of a layer [estimate]). The `C_main` commit is bound by the oracle's Merkle hashing.
 ~~~
 
-## pr21-94f86c9c3d9b · lone-root · @scaraven · record · S = 2.0699 · S_product = 1.2485 · [#21](https://github.com/scaraven/recursion.fast-submissions/pull/21) · builds on #11, #7, #12, #13, #15, #17, #19, #20
+## pr21-94f86c9c3d9b · lone-root · @scaraven · record · S_product = 1.2485 s (product) · S = 2.0699 s (sum) · [#21](https://github.com/scaraven/recursion.fast-submissions/pull/21) · builds on #11, #7, #12, #13, #15, #17, #19, #20
 
 ~~~markdown
 # lone-root
@@ -12481,7 +12481,7 @@ on dev, a lower bound. Roll 7's base read 536.9 s quiet.
 7. **Prover speed.** The tape GKR is most of the slope. The `C_main` commit is bound by the oracle's Merkle hashing.
 ~~~
 
-## pr20-79a1a990cd1a · typed-spartan · @scaraven · record · S = 2.3407 · S_product = 1.2578 · [#20](https://github.com/scaraven/recursion.fast-submissions/pull/20) · builds on #11, #7, #12, #13, #15, #17, #19
+## pr20-79a1a990cd1a · typed-spartan · @scaraven · record · S_product = 1.2578 s (product) · S = 2.3407 s (sum) · [#20](https://github.com/scaraven/recursion.fast-submissions/pull/20) · builds on #11, #7, #12, #13, #15, #17, #19
 
 ~~~markdown
 # typed-spartan
@@ -13066,7 +13066,7 @@ on dev, a lower bound. Roll 7's base read 536.9 s quiet.
 7. **Prover speed.** The tape GKR is most of the slope. The `C_main` commit is bound by the oracle's Merkle hashing.
 ~~~
 
-## pr19-0bdb3ad5e872 · listless-whir · @scaraven · record · S = 3.0884 · S_product = 1.5552 · [#19](https://github.com/scaraven/recursion.fast-submissions/pull/19) · builds on #11, #7, #12, #13, #15, #17
+## pr19-0bdb3ad5e872 · listless-whir · @scaraven · record · S_product = 1.5552 s (product) · S = 3.0884 s (sum) · [#19](https://github.com/scaraven/recursion.fast-submissions/pull/19) · builds on #11, #7, #12, #13, #15, #17
 
 ~~~markdown
 # listless-whir
@@ -13684,7 +13684,7 @@ harness), of which 30 are the vendored `LvmJB*`. In v1, comparator time was cut 
    - the extractor's serial build chain.
 ~~~
 
-## pr18-52dcfbabeea5 · ws-leaf · @scaraven · record · S = 21.7285 · S_product = 0.0524 · [#18](https://github.com/scaraven/recursion.fast-submissions/pull/18) · builds on #7, #11, #12, #14
+## pr18-52dcfbabeea5 · ws-leaf · @scaraven · record · S_product = 0.0524 s (product) · S = 21.7285 s (sum) · [#18](https://github.com/scaraven/recursion.fast-submissions/pull/18) · builds on #7, #11, #12, #14
 
 ~~~markdown
 # ws-leaf
@@ -13827,7 +13827,7 @@ season's, `fingerprint = "any"`), the benchmark pinned to 8 CPUs.
 Nothing on the prover; the point is the rule. With the gap closed, the entry is #12.
 ~~~
 
-## pr17-b7cba34ad66b · relay-slim · @Bronek · record · S = 3.2803 · S_product = 1.6165 · [#17](https://github.com/scaraven/recursion.fast-submissions/pull/17) · builds on #11, #7, #12, #13, #15
+## pr17-b7cba34ad66b · relay-slim · @Bronek · record · S_product = 1.6165 s (product) · S = 3.2803 s (sum) · [#17](https://github.com/scaraven/recursion.fast-submissions/pull/17) · builds on #11, #7, #12, #13, #15
 
 ~~~markdown
 # relay-slim
@@ -14110,7 +14110,7 @@ estimates above were written before it.
    version of the window lemmas.
 ~~~
 
-## pr11-c65f417243e9 · leanvm-inspired · @scaraven · record · S = 3.5082 · S_product = 1.7384 · [#11](https://github.com/scaraven/recursion.fast-submissions/pull/11) · builds on #7, #12, #13, #15
+## pr11-c65f417243e9 · leanvm-inspired · @scaraven · record · S_product = 1.7384 s (product) · S = 3.5082 s (sum) · [#11](https://github.com/scaraven/recursion.fast-submissions/pull/11) · builds on #7, #12, #13, #15
 
 ~~~markdown
 # leanvm-inspired
@@ -14625,7 +14625,7 @@ harness), of which 30 are the vendored `LvmJB*`. In v1, comparator time was cut 
    - the extractor's serial build chain.
 ~~~
 
-## pr14-654ad78ccd95 · chainlat-ws · @kevaundray · accepted · S = 109.3980 · S_product = 66.9481 · [#14](https://github.com/scaraven/recursion.fast-submissions/pull/14) · builds on #7, #12
+## pr14-654ad78ccd95 · chainlat-ws · @kevaundray · accepted · S_product = 66.9481 s (product) · S = 109.3980 s (sum) · [#14](https://github.com/scaraven/recursion.fast-submissions/pull/14) · builds on #7, #12
 
 ~~~markdown
 # chainlat-ws
@@ -14830,7 +14830,7 @@ Local, this machine (Ryzen 9 7950X3D, Zen 4 as the evaluation machine; a desktop
    largest published, untaken lever on either track.
 ~~~
 
-## pr11-9e756ce6880a · leanvm-inspired · @scaraven · record · S = 4.3741 · S_product = 1.9932 · [#11](https://github.com/scaraven/recursion.fast-submissions/pull/11) · builds on #7
+## pr11-9e756ce6880a · leanvm-inspired · @scaraven · record · S_product = 1.9932 s (product) · S = 4.3741 s (sum) · [#11](https://github.com/scaraven/recursion.fast-submissions/pull/11) · builds on #7
 
 ~~~markdown
 # leanvm-inspired
@@ -15224,7 +15224,7 @@ S× = 505.8.
    - the extractor's serial build chain.
 ~~~
 
-## pr15-ac6f32526ad2 · leanvm-fast-verify · @0w3n-d · record · S = 9.0826 · S_product = 6.7993 · [#15](https://github.com/scaraven/recursion.fast-submissions/pull/15) · builds on #13
+## pr15-ac6f32526ad2 · leanvm-fast-verify · @0w3n-d · record · S_product = 6.7993 s (product) · S = 9.0826 s (sum) · [#15](https://github.com/scaraven/recursion.fast-submissions/pull/15) · builds on #13
 
 ~~~markdown
 # leanvm-fast-verify
@@ -15295,7 +15295,7 @@ Prover: hand-driven `prover step` at `n = 140000` on one service, prover and ser
 - The chain-shape mux (a `2^18`-row table for short chains) would cut `P̄` far more, but it needs new placements for the in-circuit verifier and its certificate facts per shape pair.
 ~~~
 
-## pr14-f00d66e125de · chainlat-ws · @kevaundray · accepted · S = 106.2899 · S_product = 63.1955 · [#14](https://github.com/scaraven/recursion.fast-submissions/pull/14) · builds on #7, #12
+## pr14-f00d66e125de · chainlat-ws · @kevaundray · accepted · S_product = 63.1955 s (product) · S = 106.2899 s (sum) · [#14](https://github.com/scaraven/recursion.fast-submissions/pull/14) · builds on #7, #12
 
 ~~~markdown
 # chainlat-ws
@@ -15455,7 +15455,7 @@ The evaluation's verdict and scores: see the published result of this PR.
    ~2-3% of the prover and were skipped here.
 ~~~
 
-## pr13-09c572caeb97 · leanvm-gkr-fast · @alexX512 · record · S = 9.8390 · S_product = 7.7896 · [#13](https://github.com/scaraven/recursion.fast-submissions/pull/13) · builds on #11
+## pr13-09c572caeb97 · leanvm-gkr-fast · @alexX512 · record · S_product = 7.7896 s (product) · S = 9.8390 s (sum) · [#13](https://github.com/scaraven/recursion.fast-submissions/pull/13) · builds on #11
 
 ~~~markdown
 # leanvm-gkr-fast
@@ -15550,7 +15550,7 @@ The GFNI and AVX-512 kernels may gain less there.
   A faster `V_S`, in the manner of relay-echo (#12), would add to this entry's prover gain.
 ~~~
 
-## pr12-7360e1cf645d · relay-echo · @Bronek · record · S = 21.7416 · S_product = 2.1710 · [#12](https://github.com/scaraven/recursion.fast-submissions/pull/12) · builds on #7
+## pr12-7360e1cf645d · relay-echo · @Bronek · record · S_product = 2.1710 s (product) · S = 21.7416 s (sum) · [#12](https://github.com/scaraven/recursion.fast-submissions/pull/12) · builds on #7
 
 ~~~markdown
 # relay-echo
@@ -15752,7 +15752,7 @@ result of the evaluation machine.
    fits the op cache, for CPUs without AVX-512.
 ~~~
 
-## pr11-983bdcfa21d6 · leanvm-inspired · @scaraven · record · S = 10.1736 · S_product = 8.1888 · [#11](https://github.com/scaraven/recursion.fast-submissions/pull/11) · builds on #7
+## pr11-983bdcfa21d6 · leanvm-inspired · @scaraven · record · S_product = 8.1888 s (product) · S = 10.1736 s (sum) · [#11](https://github.com/scaraven/recursion.fast-submissions/pull/11) · builds on #7
 
 ~~~markdown
 # leanvm-inspired
@@ -16061,7 +16061,7 @@ v4p (AVX-512 + PCLMUL) and the shipped binary with the embedded program blob. Th
    - the extractor's 354 s serial build chain.
 ~~~
 
-## pr7-972a6dc7ae28 · witness-baseline · @scaraven · record · S = 105.9013 · S_product = 505.7979 · [#7](https://github.com/scaraven/recursion.fast-submissions/pull/7)
+## pr7-972a6dc7ae28 · witness-baseline · @scaraven · record · S_product = 505.7979 s (product) · S = 105.9013 s (sum) · [#7](https://github.com/scaraven/recursion.fast-submissions/pull/7)
 
 ~~~markdown
 # witness-baseline
