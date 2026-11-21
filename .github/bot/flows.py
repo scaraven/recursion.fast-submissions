@@ -21,7 +21,7 @@ import render
 import rfqueue
 import wfcheck
 from common import ID_RE, LOGIN_RE, PAUSING_ERRORS, MAX_TEXT_BYTES, ROOT_RE, SHA_RE, STATUS_CONTEXT, clean, entry_id, now_iso
-from decide import build_manifest_sha, cache_retry, decide
+from decide import build_manifest_sha, cache_retry, candidate, confirmed, decide
 from gitdata import Changes, Repo
 
 DATA, NOTES_MD = "data", "notes.md"
@@ -323,7 +323,7 @@ def sync(ctx):
                 rfqueue.withdraw(st, n, now, "an organiser pull request")
                 continue
             for e in rfqueue.of_pr(st, n):
-                if e["status"] == "queued" and e["sha"] != sha:
+                if e["status"] == "queued" and e["sha"] != sha and not rfqueue.confirming(e):
                     e.update(status="superseded", finished=now,
                              reasons=["the pull request moved before this commit was evaluated"])
         for n, pr in closed.items():
@@ -412,11 +412,12 @@ def select(ctx, force_pr=None, retire_id=None, resume=False, retire_track=None):
             # run, whose clean verdict resumes it
             cands, due = [], None
             ctx.log(f"select: the queue is paused since {st['paused'].get('since')}: {st['paused'].get('reason')}")
-        ports = [e for e in cands if e.get("port_of") and e["status"] == "queued"]
+        # a waiting port (re-queued after an ERROR) or confirmation run is still first
+        ports = [e for e in cands if (e.get("port_of") or rfqueue.confirming(e)) and e["status"] == "queued"]
         if due is not None:
             cands, changed = [rfqueue.port(st, due["pr"], ctx.pin, now, o=due)], True
         elif ports:
-            cands = ports[:1]                  # a waiting port (re-queued after an ERROR) is still first
+            cands = ports[:1]
         elif force_pr is not None:
             cands = [e for e in cands if e["pr"] == force_pr]
             if not cands:
@@ -430,7 +431,8 @@ def select(ctx, force_pr=None, retire_id=None, resume=False, retire_track=None):
                     if port:
                         cands, changed = [port], True
         for e in cands:                      # every candidate, so one unreadable PR blocks nothing
-            p = live_pr(e["pr"]) if not e.get("port_of") else {"state": "open", "head": {"sha": e["sha"]}}
+            p = (live_pr(e["pr"]) if not (e.get("port_of") or rfqueue.confirming(e))
+                 else {"state": "open", "head": {"sha": e["sha"]}})
             if p is None:
                 continue
             if p.get("state") != "open":
@@ -444,7 +446,7 @@ def select(ctx, force_pr=None, retire_id=None, resume=False, retire_track=None):
                 notify[e["id"]] = copy.deepcopy(e)
                 changed = True
                 continue
-            if force_pr is None and (p.get("draft") or "hold" in _labels(p)):
+            if force_pr is None and not rfqueue.confirming(e) and (p.get("draft") or "hold" in _labels(p)):
                 continue
             rfqueue.mark_running(e, now, ctx.run_url)
             e["run_attempt"] = ctx.run_attempt
@@ -531,6 +533,31 @@ def publish(ctx, eid, result_path):
         rids = {t: r["id"] if r else None for t, r in recs.items()}
         d = decide(result, ver, ctx.pin, recs, e.get("attempts", 1), provers, tracks=e.get("port_tracks"))
         now = ctx.now()
+        # the confirmation (decide.py): a pending candidate of this pin is decided by this run too; one
+        # of an earlier pin is void (the pin moved before it ran), and this run is a first run again
+        first = e.get("confirm") if (e.get("confirm") or {}).get("pin") == ctx.pin else None
+        e.pop("confirm", None)
+        conf = confirmed(first, d) if first else None
+        if first and conf and d["status"] == "rejected" and cache_retry(result, e):
+            conf = None                         # a REJECT that used the record build cache: confirmed again without it
+            d.update(requeue=True, status="queued")
+            e["record_cache"] = False
+            d["reasons"] = d["reasons"][:19] + ["the record build cache was used: the confirmation runs once more without it"]
+        if first and conf is None:
+            e["confirm"] = first                # an organiser-side end: the confirmation stays pending
+        elif conf:
+            d.update(conf, reasons=(d["reasons"] + conf["reasons"])[-20:])
+            e["confirmation"] = {"first_run": first.get("run_url"), "first_result": first.get("result"),
+                                 "run": ctx.run_url, "result": f"results/{eid}-confirm.json",
+                                 "first_score": first.get("score"), "score": d2_score(result),
+                                 "status": conf["status"]}
+        elif d["status"] == "record" and not e.get("port_of"):
+            # a record candidate: queued once more at this pin, ahead of the queue (rfqueue.order)
+            e["confirm"] = candidate(d, ctx.pin, ctx.run_url, f"results/{eid}.json")
+            d.update(requeue=True, status="queued", took=[])
+            d["reasons"] = d["reasons"][:19] + [f"a record candidate in {', '.join(e['confirm']['took'])}: queued for its "
+                                                "confirmation run (this commit, once more at this pin); the record is "
+                                                "taken only if that run also beats the standing record"]
         ps = result.get("prover_sha256") if isinstance(result, dict) else None
         e["build_manifest"] = build_manifest_sha(result) if d["verified"] else None
         e.update({k: d[k] for k in ("verdict", "score", "comparable", "truncated", "harness_commit",
@@ -555,17 +582,21 @@ def publish(ctx, eid, result_path):
             done["resumed"] = True
         ch = Changes()
         keep_raw = raw is not None and len(raw) <= 4 << 20
-        if d["status"] != "queued" and cache_retry(result, e):
+        if d["status"] != "queued" and not e.get("confirm") and cache_retry(result, e):
             d["requeue"] = True
             e["reasons"] = e["reasons"][:19] + ["the record build cache was used: evaluated once more without it"]
         if d["requeue"]:
             if d["verdict"] in ("ERROR", "REJECT") or not d["verified"]:
                 e["record_cache"] = False      # the retry builds clean: a sabotaged cache cannot fail it
             e.update(status="queued", finished=None)
+            if e.get("confirm") and e["confirm"].get("run_url") == ctx.run_url:
+                e["attempts"] = 0              # the confirmation run has its own retry, as a port does
         else:
             e.update(status=d["status"], finished=now, record_in=d["took"])
         done["record_changed"] = {t: r["id"] if r else None for t, r in rfqueue.standing(st, ctx.pin).items()} != rids
-        if keep_raw:
+        if keep_raw and first:
+            ch.put(f"results/{eid}-confirm.json", raw)     # the first run's result stays results/<id>.json
+        elif keep_raw:
             ch.put(f"results/{eid}.json", raw)
             e["result"] = f"results/{eid}.json"
         _write_state(ctx, ch, snap, st)
@@ -595,6 +626,12 @@ def publish(ctx, eid, result_path):
     if failed:
         raise RuntimeError(f"publish: {eid} is published on data, but these failed: {', '.join(failed)}")
     return e
+
+
+def d2_score(result):
+    """The cleaned score of a confirmation run's result (for the entry's `confirmation` record)."""
+    from decide import clean_score
+    return clean_score(result.get("score")) if isinstance(result, dict) else None
 
 
 def sync_main(ctx, st):

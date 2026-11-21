@@ -12,23 +12,30 @@ STATUS_CONTEXT = "recursion.fast/evaluation"
 # The record rule (AGENTS.md §10), per track t: a comparable, attested ACCEPT at the pin is a new
 # record of t iff S_t < (1 - MARGIN) * S_t,record, S_t,record the standing record's score in t at the pin.
 # MARGIN is the owner's choice (2 %), not derived from the noise. For reference: σ, the relative
-# run-to-run spread of S for one entry on the evaluation machine with the fixed chain lengths, was
+# run-to-run spread of S for one entry on the evaluation machine with a fixed stream, was
 # measured at 1.75 % over 10 runs at the smoke shape (the core's harness/smoke.toml; mostly per-step
-# process overhead, likely smaller at the season shape). S and S_record are two independent runs, so
-# two runs of one entry differ by about √2·σ ≈ 2.5 %: a near-copy of the record can beat it by noise
-# alone (at σ = 1.75 %, in roughly one attempt in five). A noise-proof margin would be 3·√2·σ ≈ 7.4 %.
-# The defences are elsewhere: a byte copy of an evaluated root is invalid, a record's prover binary
-# never takes the record again, and the owner retires a record won by noise (`retire`). The owner may
+# process overhead, likely smaller at the season shape) under the earlier rules, with one timed
+# pass (the v6 rules take each step's minimum of two timed passes, which should lower it). S and
+# S_record are two independent runs, so two runs of one entry differ by about √2·σ ≈ 2.5 %: a
+# near-copy of the record can beat it by noise alone (at σ = 1.75 %, in roughly one attempt in
+# five). A noise-proof margin would be 3·√2·σ ≈ 7.4 %.
+# The defences are elsewhere: a record candidate is confirmed by a second run of the same commit that
+# must also beat the record, and the record keeps the worse score (decide.confirmed); a byte copy of
+# an evaluated root is invalid, a record's prover binary never takes the record again, and the owner
+# retires a record won by noise (`retire`). The owner may
 # change MARGIN between seasons (a stored state with another margin is rewritten at once,
 # rfqueue.load; README.md, "Changing the margin", lists every place that states it).
 MARGIN = 0.02
-# The tracks (the core's AGENTS.md §7, §8): two scores from the one evaluation, each with its own
-# records. A result's `score.tracks` names, per track, the field of `score` that is its score
-# ({"sum": "S", "product": "S_product"}); a score without `tracks` (an older result) has the sum
-# alone, `S`. The record rule runs once per track that the result names, with the one MARGIN.
-# TRACKS is the order the bot lists them in and the tracks `record` always names; a track a result
-# names that is not here is decided the same way, so a later track needs no bot change.
-TRACKS = ("sum", "product")
+# The tracks (the core's AGENTS.md §7, §8): one evaluation, one score `S`, two eligibilities, each
+# track with its own records. `final`: only the final proof is verified; `every`: every proof is.
+# A result's `score.tracks` names, per track, the field of `score` that is its score
+# ({"final": "S", "every": "S"}; `every` is absent when the entry is eligible for `final` only, and
+# `tracks_reason` says why). A score without `tracks` (a result of an earlier season) has the sum of
+# that season alone, `S` (LEGACY_TRACKS). The record rule runs once per track that the result names,
+# with the one MARGIN. TRACKS is the order the bot lists them in, the tracks `record` always names
+# and the only tracks whose records are ported to a new pin; a track a result names that is not here
+# (an earlier season's `sum`, `product`) is decided the same way and kept in the history.
+TRACKS = ("final", "every")
 LEGACY_TRACKS = {"sum": "S"}
 TRACK_RE = re.compile(r"[a-z][a-z0-9_]{0,15}\Z")
 MAX_ATTEMPTS = 2          # an organiser-side ERROR is evaluated once more, then left for the owner
@@ -38,7 +45,7 @@ MAX_ATTEMPTS = 2          # an organiser-side ERROR is evaluated once more, then
 # entry process alive, so only a thermal effect could carry over (accepted and documented). These are
 # the organiser's alone: a run that ends in one never counts against the author (it does not move
 # the author back in the fair order). A `fingerprint` error (the machine is not the season's) or a
-# `lengths` error (the stream did not use the season's fixed chain lengths: an organiser bug, the
+# `lengths` error (the stream's shape, M and n, was not the season's: an organiser bug, the
 # same at every retry at one pin) does not even use up the entry's retry; the others are retried
 # once (MAX_ATTEMPTS). `attestation`: an unverified result (the bot's).
 UNCOUNTED_ERRORS = ("fingerprint", "lengths", "drift", "setup", "cache", "attestation")
@@ -127,7 +134,7 @@ def is_num(x):
 def score_fields(score):
     """[(track, field, value)] of a result's `score` object, in TRACKS order: the field
     `score.tracks[track]` names and its value, for each track whose score is a positive number (a
-    score without `tracks`: the sum's `S` only). At most 8 tracks."""
+    score without `tracks`: an earlier season's sum, `S`, only). At most 8 tracks."""
     if not isinstance(score, dict):
         return []
     names = score.get("tracks") if isinstance(score.get("tracks"), dict) else LEGACY_TRACKS

@@ -84,12 +84,19 @@ def _close(e, status, now, reason=None):
         e["reasons"] = [reason]
 
 
+def confirming(e):
+    """Whether `e` waits for its confirmation run (decide.py): a record candidate of a commit already
+    evaluated, the organiser's to finish. Like a port it goes before the queue, and nothing the pull
+    request does (a push, closing it, a draft, `hold`) withdraws or supersedes it."""
+    return bool(e.get("confirm")) and e.get("status") in (QUEUED, RUNNING, "error")
+
+
 def withdraw(st, pr, now, reason):
     """Queued entries of the pull request become `withdrawn` (closed, draft or held before their
-    evaluation). Returns the ids changed."""
+    evaluation), a pending confirmation excepted. Returns the ids changed."""
     out = []
     for e in of_pr(st, pr):
-        if e["status"] == QUEUED:
+        if e["status"] == QUEUED and not confirming(e):
             _close(e, "withdrawn", now, reason)
             out.append(e["id"])
     return out
@@ -102,7 +109,7 @@ def enqueue(st, entry, now):
     Returns (entry in the state, changed: bool)."""
     changed = False
     for e in of_pr(st, entry["pr"]):
-        if e["status"] == QUEUED and e["id"] != entry["id"]:
+        if e["status"] == QUEUED and e["id"] != entry["id"] and not confirming(e):
             _close(e, "superseded", now, "the pull request moved before this commit was evaluated")
             changed = True
     old = find(st, entry["id"])
@@ -122,7 +129,7 @@ def add_invalid(st, entry, reasons, now):
     """Records a head that failed the precheck (and supersedes the pull request's queued ones).
     Returns (entry, changed)."""
     for e in of_pr(st, entry["pr"]):
-        if e["status"] == QUEUED and e["id"] != entry["id"]:
+        if e["status"] == QUEUED and e["id"] != entry["id"] and not confirming(e):
             _close(e, "superseded", now, "the pull request moved before this commit was evaluated")
     old = find(st, entry["id"])
     if old is not None and old["status"] not in ("superseded", "withdrawn", "invalid"):
@@ -162,8 +169,8 @@ def duplicate_of(st, eid, pr, author, tree):
 
 
 def order(st):
-    """The waiting entries in evaluation order: waiting ports (oldest first), then the other queued
-    entries in the fair order."""
+    """The waiting entries in evaluation order: waiting ports and confirmations (oldest first), then
+    the other queued entries in the fair order."""
     last = {}
     for e in st["submissions"]:
         t = counted_start(e)
@@ -171,8 +178,9 @@ def order(st):
             a = e["author"]
             last[a] = max(last.get(a, ""), t)
     key = lambda e: (e["queued"] or "", e["id"])  # noqa: E731
-    front = sorted((e for e in st["submissions"] if e["status"] == QUEUED and e.get("port_of")), key=key)
-    queued = sorted((e for e in st["submissions"] if e["status"] == QUEUED and not e.get("port_of")), key=key)
+    first = lambda e: bool(e.get("port_of")) or confirming(e)  # noqa: E731
+    front = sorted((e for e in st["submissions"] if e["status"] == QUEUED and first(e)), key=key)
+    queued = sorted((e for e in st["submissions"] if e["status"] == QUEUED and not first(e)), key=key)
     by = {}
     for e in queued:
         by.setdefault(e["author"], []).append(e)
@@ -378,11 +386,15 @@ def port_id(o, pin):
 
 
 def due_ports(st, pin):
-    """{track: the record to port to this pin}, for each track with no record standing at the pin
-    whose newest record is of an earlier pin, was not retired in that track, and has not been ported
-    here yet (a port evaluated once, whatever its verdict, is not repeated)."""
+    """{track: the record to port to this pin}, for each track of TRACKS with no record standing at
+    the pin whose newest record is of an earlier pin, was not retired in that track, and has not been
+    ported here yet (a port evaluated once, whatever its verdict, is not repeated). A track not in
+    TRACKS (an earlier season's) is never ported: its records stay in the history, and the new
+    season starts with no record in it."""
     out = {}
     for t, cur in standing(st, pin).items():
+        if t not in TRACKS:
+            continue
         rs = records(st, t)
         o = rs[0] if rs else None
         if cur is not None or o is None or retired_in(o, t) or o.get("harness_commit") == pin \

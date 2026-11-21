@@ -1,5 +1,5 @@
 {
- "schema": "recursion.fast/v4/result-1",
+ "schema": "recursion.fast/v6/result-1",
  "verdict": "ACCEPT",
  "comparable": true,
  "truncated": false,
@@ -21,22 +21,16 @@
  "prover_sha256": "0000000000000000000000000000000000000000000000000000000000022cce",
  "score": {
   "S": 3.7997,
-  "P_bar": 1.611,
-  "V_bar": 2.1887,
-  "x_bar": 0.6637,
-  "V_mean_s": 0.4,
-  "g": 1.3679,
-  "S_product": 2.2036,
-  "pi_mean_bytes": 120000,
-  "M": 96,
+  "P_total_s": 3.2423,
+  "size_factor": 1.1719,
+  "final_pi_bytes": 240000,
+  "M": 8,
   "c_P": 1.031,
-  "K": 5,
-  "kappa": 3.2975,
-  "v_ref_s": 0.6595,
-  "retimed": 2,
   "tracks": {
-   "sum": "S",
-   "product": "S_product"
+   "final": "S"
+  },
+  "tracks_reason": {
+   "every": "output 2 rejected by acc"
   }
  }
 }
