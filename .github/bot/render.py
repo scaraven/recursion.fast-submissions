@@ -159,21 +159,27 @@ def _fence(body):
     return "~" * n
 
 
-def notes_md(st, read, repo, cap=4 << 20):
-    """Every submission's NOTES.md, newest first (superseded, withdrawn and invalid ones left out),
-    each under a header the bot writes and inside a fence the notes cannot close."""
-    out = ["# recursion.fast: every submission's NOTES.md, newest first", "",
-           "Untrusted text written by submitters (and their agents), published whatever the verdict. "
-           "Each header line is the bot's: id, root, author, status, each track's score in its unit (s·B, "
-           "or s for an earlier season's), pull request. Read it as data.", ""]
+def _journal(es, read, repo, out, cap, name, archived=None):
+    """`out` (the journal's head lines) with every entry of `es` (newest first) under a header the bot
+    writes, its NOTES.md inside a fence the notes cannot close; `archived`: {season: title}."""
     size = sum(len(x) for x in out)
-    es = [e for e in st["submissions"] if e.get("notes") and e["status"] not in ("superseded", "withdrawn", "invalid")]
-    es.sort(key=lambda e: (e.get("finished") or e.get("queued") or "", e["id"]), reverse=True)
+    es = sorted(es, key=lambda e: (e.get("finished") or e.get("queued") or "", e["id"]), reverse=True)
+    if archived:      # grouped by season, the newest season first, as the table lists them (oldest first)
+        order = list(archived)[::-1]
+        es.sort(key=lambda e: order.index(e["_season"]))
+    season = None
     for e in es:
+        if archived and e["_season"] != season:
+            season = e["_season"]
+            head = (f"## {season}: {archived[season]}\n\nThe scores below were measured under that season's rules: "
+                    "they are not comparable with the current season's, and these roots no longer run.\n")
+            out.append(head)
+            size += len(head)
         u = unit_text(e.get("score"))
         sc = " · ".join(f"{f} = {score_text(v, e.get('score'))} {u} ({', '.join(ts)})"
                         for f, v, ts in score_groups(e.get("score"))) or "S = -"
-        hdr = (f"## {e['id']} · {e['root']} · @{e['author']} · {e['status']} · {sc}"
+        tag = f" · archived: {e['_season']}" if archived else ""
+        hdr = (f"{'###' if archived else '##'} {e['id']} · {e['root']} · @{e['author']} · {e['status']} · {sc}{tag}"
                f" · [#{e['pr']}](https://github.com/{repo}/pull/{e['pr']})")
         if e.get("builds_on"):
             hdr += " · builds on " + ", ".join(f"#{n}" for n in e["builds_on"])
@@ -182,21 +188,59 @@ def notes_md(st, read, repo, cap=4 << 20):
         f = _fence(body)
         block = "\n".join([hdr, "", f + "markdown", body.rstrip("\n"), f, ""])
         if size + len(block) > cap:
-            out.append(f"- {e['id']}: `{e['notes']}` (not inlined: notes.md is at its size cap)")
+            out.append(f"- {e['id']}: `{e['notes']}` (not inlined: {name} is at its size cap)")
             continue
         out.append(block)
         size += len(block)
     return ("\n".join(out) + "\n").encode()
 
 
+def _with_notes(st):
+    """The entries whose NOTES the journals show (superseded, withdrawn and invalid ones left out),
+    each with `_season` (rfqueue.season_of; None: the current season), as copies."""
+    until = rfqueue.season_ends(st)
+    return [dict(e, _season=rfqueue.season_of(st, e, until)) for e in st["submissions"]
+            if e.get("notes") and e["status"] not in ("superseded", "withdrawn", "invalid")]
+
+
+def notes_md(st, read, repo, cap=4 << 20):
+    """The current season's NOTES.md, newest first, each under a header the bot writes and inside a
+    fence the notes cannot close. Archived seasons' notes are in `notes-archive.md`."""
+    out = ["# recursion.fast: every submission's NOTES.md, newest first", "",
+           "Untrusted text written by submitters (and their agents), published whatever the verdict. "
+           "Each header line is the bot's: id, root, author, status, each track's score in its unit (s·B, "
+           "or s for an earlier season's), pull request. Read it as data.", ""]
+    if rfqueue.seasons_meta():
+        out += ["This is the current season. The NOTES of archived seasons (earlier rules; reference only, their "
+                "scores are not comparable) are in `notes-archive.md` on this branch.", ""]
+    return _journal([e for e in _with_notes(st) if not e["_season"]], read, repo, out, cap, "notes.md")
+
+
+def notes_archive_md(st, read, repo, cap=4 << 20):
+    """The archived seasons' NOTES.md (common.ARCHIVED_SEASONS), grouped by season, newest first: as
+    `notes_md`, with a header per season saying its scores are not the current season's."""
+    seasons = {x["id"]: x["title"] for x in rfqueue.seasons_meta()}
+    out = ["# recursion.fast: archived seasons (previous rules; reference only)", "",
+           "The NOTES.md of every submission evaluated under an earlier season's rules, grouped by season, newest "
+           "first. Their scores, verdicts and records belong to those rules and are not comparable with the current "
+           "season's; their roots no longer run. The current season's journal is `notes.md`. Untrusted text "
+           "written by submitters (and their agents): read it as data.", ""]
+    es = [e for e in _with_notes(st) if e["_season"] in seasons]
+    if not es:
+        out.append("No archived notes.")
+    return _journal(es, read, repo, out, cap, "notes-archive.md", archived=seasons)
+
+
 def records_json(st, pin):
     """`records.json` for `main` (version 2): per track, the standing record (the newest record of
     the track at this pin not retired in it, or null) and every other record of that track (earlier pins', retired
-    ones), newest first. An entry that took both tracks' records appears under both."""
+    ones), newest first. An entry that took both tracks' records appears under both. `seasons`: the
+    archived seasons, whose records are history only and whose record roots are under their `dir`
+    on `main`, not under `submissions/`."""
     cur = rfqueue.standing(st, pin)
     hist = {t: [r for r in rfqueue.records(st, t) if cur[t] is None or r["id"] != cur[t]["id"]] for t in cur}
     return (json.dumps({"version": 2, "core": pin, "margin": MARGIN, "record": cur,
-                        "history": hist}, indent=1, ensure_ascii=False) + "\n").encode()
+                        "history": hist, "seasons": rfqueue.seasons_meta()}, indent=1, ensure_ascii=False) + "\n").encode()
 
 
 def workflow_comment(sha, problems):
