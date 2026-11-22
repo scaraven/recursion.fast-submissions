@@ -3226,5 +3226,23 @@
     "result": "results/pr7-972a6dc7ae28.json"
    }
   ]
- }
+ },
+ "seasons": [
+  {
+   "id": "season-1",
+   "title": "Season 1: the v4 and v5 rules (hash chains; the sum and product tracks)",
+   "dir": "archive/season-1",
+   "tracks": [
+    "sum",
+    "product"
+   ],
+   "pins": [
+    "77e550b54c23383204164c04e69176fa088a1af6",
+    "15e4ae5eaba6a65211668c6e0f55f9fea1d9050d",
+    "df1f3448f9ec181ce1fcae43964fd11301f653bf",
+    "f3538eb2a198240d864eb773331a88bf16283688",
+    "7ecd179d4eabdda97e7caba492810dfc9c2ce9db"
+   ]
+  }
+ ]
 }
