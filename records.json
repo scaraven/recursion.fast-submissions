@@ -142,7 +142,8 @@
     ],
     "retired_in": {},
     "counted_at": "2026-11-12T12:58:38Z",
-    "result": "results/pr18-52dcfbabeea5.json"
+    "result": "results/pr18-52dcfbabeea5.json",
+    "season": "season-1"
    },
    {
     "id": "pr17-b7cba34ad66b",
@@ -276,7 +277,8 @@
     ],
     "retired_in": {},
     "counted_at": "2026-11-12T12:26:18Z",
-    "result": "results/pr17-b7cba34ad66b.json"
+    "result": "results/pr17-b7cba34ad66b.json",
+    "season": "season-1"
    },
    {
     "id": "pr11-c65f417243e9",
@@ -409,7 +411,8 @@
     ],
     "retired_in": {},
     "counted_at": "2026-11-12T02:51:45Z",
-    "result": "results/pr11-c65f417243e9.json"
+    "result": "results/pr11-c65f417243e9.json",
+    "season": "season-1"
    },
    {
     "id": "pr11-9e756ce6880a",
@@ -539,7 +542,8 @@
     ],
     "retired_in": {},
     "counted_at": "2026-11-11T21:46:06Z",
-    "result": "results/pr11-9e756ce6880a.json"
+    "result": "results/pr11-9e756ce6880a.json",
+    "season": "season-1"
    },
    {
     "id": "pr12-7360e1cf645d",
@@ -668,7 +672,8 @@
     ],
     "retired_in": {},
     "counted_at": "2026-11-11T15:32:57Z",
-    "result": "results/pr12-7360e1cf645d.json"
+    "result": "results/pr12-7360e1cf645d.json",
+    "season": "season-1"
    },
    {
     "id": "pr11-983bdcfa21d6",
@@ -798,7 +803,8 @@
     ],
     "retired_in": {},
     "counted_at": "2026-11-11T12:15:02Z",
-    "result": "results/pr11-983bdcfa21d6.json"
+    "result": "results/pr11-983bdcfa21d6.json",
+    "season": "season-1"
    },
    {
     "id": "pr7-972a6dc7ae28",
@@ -914,7 +920,8 @@
     ],
     "retired_in": {},
     "counted_at": "2026-11-10T12:47:40Z",
-    "result": "results/pr7-972a6dc7ae28.json"
+    "result": "results/pr7-972a6dc7ae28.json",
+    "season": "season-1"
    }
   ],
   "sum": [
@@ -1064,7 +1071,8 @@
     ],
     "retired_in": {},
     "counted_at": "2026-11-17T00:02:23Z",
-    "result": "results/pr35-3c1d951c5d5f.json"
+    "result": "results/pr35-3c1d951c5d5f.json",
+    "season": "season-1"
    },
    {
     "id": "pr32-6acc2f85e708",
@@ -1211,7 +1219,8 @@
     ],
     "retired_in": {},
     "counted_at": "2026-11-16T16:00:07Z",
-    "result": "results/pr32-6acc2f85e708.json"
+    "result": "results/pr32-6acc2f85e708.json",
+    "season": "season-1"
    },
    {
     "id": "pr29-7c067e9d82be",
@@ -1355,7 +1364,8 @@
     ],
     "retired_in": {},
     "counted_at": "2026-11-16T10:33:24Z",
-    "result": "results/pr29-7c067e9d82be.json"
+    "result": "results/pr29-7c067e9d82be.json",
+    "season": "season-1"
    },
    {
     "id": "pr27-213d91c8cd5c",
@@ -1497,7 +1507,8 @@
     ],
     "retired_in": {},
     "counted_at": "2026-11-16T06:42:46Z",
-    "result": "results/pr27-213d91c8cd5c.json"
+    "result": "results/pr27-213d91c8cd5c.json",
+    "season": "season-1"
    },
    {
     "id": "pr26-55674e596d5a",
@@ -1638,7 +1649,8 @@
     ],
     "retired_in": {},
     "counted_at": "2026-11-16T01:04:29Z",
-    "result": "results/pr26-55674e596d5a.json"
+    "result": "results/pr26-55674e596d5a.json",
+    "season": "season-1"
    },
    {
     "id": "pr25-a10e0f5e6f81",
@@ -1778,7 +1790,8 @@
     ],
     "retired_in": {},
     "counted_at": "2026-11-16T00:05:55Z",
-    "result": "results/pr25-a10e0f5e6f81.json"
+    "result": "results/pr25-a10e0f5e6f81.json",
+    "season": "season-1"
    },
    {
     "id": "pr23-01ba10cfcceb",
@@ -1916,7 +1929,8 @@
     ],
     "retired_in": {},
     "counted_at": "2026-11-15T21:47:09Z",
-    "result": "results/pr23-01ba10cfcceb.json"
+    "result": "results/pr23-01ba10cfcceb.json",
+    "season": "season-1"
    },
    {
     "id": "pr21-94f86c9c3d9b",
@@ -2052,7 +2066,8 @@
     ],
     "retired_in": {},
     "counted_at": "2026-11-13T16:45:36Z",
-    "result": "results/pr21-94f86c9c3d9b.json"
+    "result": "results/pr21-94f86c9c3d9b.json",
+    "season": "season-1"
    },
    {
     "id": "pr20-79a1a990cd1a",
@@ -2187,7 +2202,8 @@
     ],
     "retired_in": {},
     "counted_at": "2026-11-13T13:21:40Z",
-    "result": "results/pr20-79a1a990cd1a.json"
+    "result": "results/pr20-79a1a990cd1a.json",
+    "season": "season-1"
    },
    {
     "id": "pr19-0bdb3ad5e872",
@@ -2321,7 +2337,8 @@
     ],
     "retired_in": {},
     "counted_at": "2026-11-12T16:55:03Z",
-    "result": "results/pr19-0bdb3ad5e872.json"
+    "result": "results/pr19-0bdb3ad5e872.json",
+    "season": "season-1"
    },
    {
     "id": "pr17-b7cba34ad66b",
@@ -2455,7 +2472,8 @@
     ],
     "retired_in": {},
     "counted_at": "2026-11-12T12:26:18Z",
-    "result": "results/pr17-b7cba34ad66b.json"
+    "result": "results/pr17-b7cba34ad66b.json",
+    "season": "season-1"
    },
    {
     "id": "pr11-c65f417243e9",
@@ -2588,7 +2606,8 @@
     ],
     "retired_in": {},
     "counted_at": "2026-11-12T02:51:45Z",
-    "result": "results/pr11-c65f417243e9.json"
+    "result": "results/pr11-c65f417243e9.json",
+    "season": "season-1"
    },
    {
     "id": "pr11-9e756ce6880a",
@@ -2718,7 +2737,8 @@
     ],
     "retired_in": {},
     "counted_at": "2026-11-11T21:46:06Z",
-    "result": "results/pr11-9e756ce6880a.json"
+    "result": "results/pr11-9e756ce6880a.json",
+    "season": "season-1"
    },
    {
     "id": "pr15-ac6f32526ad2",
@@ -2848,7 +2868,8 @@
      "sum"
     ],
     "retired_in": {},
-    "result": "results/pr15-ac6f32526ad2.json"
+    "result": "results/pr15-ac6f32526ad2.json",
+    "season": "season-1"
    },
    {
     "id": "pr13-09c572caeb97",
@@ -2977,7 +2998,8 @@
     ],
     "retired_in": {},
     "counted_at": "2026-11-11T17:05:14Z",
-    "result": "results/pr13-09c572caeb97.json"
+    "result": "results/pr13-09c572caeb97.json",
+    "season": "season-1"
    },
    {
     "id": "pr11-983bdcfa21d6",
@@ -3107,7 +3129,8 @@
     ],
     "retired_in": {},
     "counted_at": "2026-11-11T12:15:02Z",
-    "result": "results/pr11-983bdcfa21d6.json"
+    "result": "results/pr11-983bdcfa21d6.json",
+    "season": "season-1"
    },
    {
     "id": "pr7-972a6dc7ae28",
@@ -3223,7 +3246,8 @@
     ],
     "retired_in": {},
     "counted_at": "2026-11-10T12:47:40Z",
-    "result": "results/pr7-972a6dc7ae28.json"
+    "result": "results/pr7-972a6dc7ae28.json",
+    "season": "season-1"
    }
   ]
  },
