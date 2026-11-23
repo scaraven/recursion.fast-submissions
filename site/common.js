@@ -46,14 +46,14 @@
       desc: Object.freeze({ P_total_s: P_DESC, final_pi_bytes: 'the final proof, in bytes' }),
       size: ['final_pi_bytes', '|\u03c0\u2081\u2086|'],
       note: 'Seconds \u00b7 bytes: the median of three timed passes\' totals over the 16 steps, times the final proof\'s size in bytes. Lower is better.',
-      blurb: 'Only the final proof is verified (at most 512 KiB, checked in at most 64 ms); each intermediate output need only fit in 1 MiB. S: the median of three timed passes\' total time over the 16 steps, in seconds, times the final proof\'s size in bytes.' }),
+      blurb: 'Only the final proof is verified (\u2264 512 KiB, checked in \u2264 64 ms). S = prover time \u00d7 the final proof\'s bytes.' }),
     Object.freeze({ id: 'every', label: 'Every', sym: 'S_every', field: null, unit: UNIT, factor: 'size_factor_every',
       formula: 'S_every = P_total \u00b7 max |\u03c0\u1d62|',
       parts: Object.freeze([['P_total_s', 'P_total', 's'], ['max_pi_bytes', 'max |\u03c0\u1d62|', 'B']]),
       desc: Object.freeze({ P_total_s: P_DESC, max_pi_bytes: 'the largest proof, in bytes' }),
       size: ['max_pi_bytes', 'max |\u03c0\u1d62|'],
       note: 'Seconds \u00b7 bytes: the median of three timed passes\' totals over the 16 steps, times the largest proof\'s size in bytes. Lower is better.',
-      blurb: 'Every proof is verified: each intermediate proof too is accepted against its statement (at most 1 MiB, checked in at most 64 ms). S_every: the same P_total, times the size in bytes of the largest of the 16 proofs.' })
+      blurb: 'Every one of the 16 proofs is verified (each \u2264 1 MiB, checked in \u2264 64 ms). S_every = prover time \u00d7 the largest proof\'s bytes.' })
   ]);
   const TRACK_IDS = TRACKS.map(t => t.id);
   const trackOf = id => TRACKS.find(t => t.id === id) || TRACKS[0];

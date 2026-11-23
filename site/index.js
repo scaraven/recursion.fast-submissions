@@ -5,14 +5,6 @@
   const { el, svg, ext, page, link, fmtS, fmtPart, fmtDate, timeEl, ago, badge, evaluatedAt, gainOf, marginText, pct, unverified,
     scoreIn, retiredIn, trackOf } = window.RF;
 
-  // the record an entry beat in the track, in words: its gain and a link to that record
-  function beat(e, tr, data, nm) {
-    const a = e.against[tr.id];
-    if (!a || !e.record_of[tr.id]) return e.port_of ? 'none (the record re-run at a new pin)' : 'none (no record stood in this track at its pin)';
-    const prev = data.all.find(x => x.id === a.record);
-    const name = el('a', { href: page('submission.html', { id: a.record }) }, prev ? nm(prev) : a.record);
-    return [pct(gainOf(e, tr.id)), ' against ', name, a.S_record !== null ? ` (${fmtS(a.S_record, unitOf(e, tr))} ${unitOf(e, tr)})` : ''];
-  }
   const short = sha => sha ? sha.slice(0, 7) : 'unknown';
   // the unit of an entry's score in a track, by how its result is priced (this season: s\u00b7B)
   const unitOf = (e, tr) => window.RF.pricedBy(tr, window.RF.partsIn(e.score, tr.id)).unit;
@@ -74,26 +66,33 @@
     // this track's own priced proof (`final`: the final proof; `every`: the largest), its size in
     // bytes the factor (an earlier v6 season's result: its exponential factor of that size)
     const pt = window.RF.pricedBy(tr, sc), [sk, sl] = pt.size;
-    const split = [el('span', { class: 'math' }, 'P_total'), fmtS(sc.P_total_s) + '\u00a0s', el('span', { class: 'op' }, '\u00d7'),
-      ...(pt.old ? [el('span', { class: 'math' }, pt.factorText), fmtPart(sc[pt.factor], ''), el('span', { class: 'muted' }, ` (${sl} = ${window.RF.fmtBytes(sc[sk])})`)]
-        : [el('span', { class: 'math' }, sl), fmtPart(sc[sk], 'B')])];
+    const part = (sym, val, extra) => el('span', { class: 'part' }, el('span', { class: 'math' }, sym), val, extra || null);
+    const split = [part('P_total', fmtS(sc.P_total_s) + ' s'), el('span', { class: 'op', 'aria-label': 'times' }, '×'),
+      pt.old ? part(pt.factorText, fmtPart(sc[pt.factor], ''), el('span', { class: 'muted' }, ` (${sl} = ${window.RF.fmtBytes(sc[sk])})`))
+        : part(sl, fmtPart(sc[sk], 'B'))];
     const other = window.RF.TRACKS.filter(t => t.id !== tr.id && data.record[t.id] && data.record[t.id].id === cur.id);
     const left = el('div', null,
       el('h2', null, `Current ${tr.label.toLowerCase()} record`),
       el('p', { class: 'score-big' }, el('span', { class: 'math' }, pt.sym), fmtS(scoreIn(cur, tr.id), pt.unit), el('span', { class: 'unit' }, window.RF.unitNode(pt.unit))),
-      el('p', { class: 'score-split' }, '=', split),
+      el('p', { class: 'score-split' }, el('span', { class: 'visually-hidden' }, '= '), split),
       el('p', { class: 'score-note' }, pt.note),
-      other.length ? el('p', { class: 'score-note' }, 'It also holds the ' + other.map(t => t.label.toLowerCase()).join(' and ') + ' record.') : null);
-    const dl = el('dl', { class: 'kv' },
-      el('dt', null, 'Entry'), el('dd', null, el('a', { href: page('submission.html', { id: cur.id }) }, nm(cur))),
-      el('dt', null, 'Author'), el('dd', null, cur.author ? ext(link.author(cur), cur.author) : '–'),
-      cur.agent ? el('dt', null, 'Agent') : null, cur.agent ? el('dd', null, cur.agent) : null,
-      el('dt', null, 'Date'), el('dd', null, timeEl(evaluatedAt(cur))),
-      el('dt', null, 'Gain'), el('dd', null, beat(cur, tr, data, nm)),
-      el('dt', null, 'Contract pin'), el('dd', null, cur.harness_commit ? ext(link.core(cur.harness_commit), short(cur.harness_commit)) : '–'));
-    const right = el('div', { class: 'facts' }, dl,
-      el('p', { class: 'more' }, el('a', { href: page('submission.html', { id: cur.id }) }, 'Verdict, notes and code'), ' ',
-        el('span', { class: 'muted' }, '(pull request '), ext(link.pr(cur), '#' + cur.pr), el('span', { class: 'muted' }, ')')));
+      other.length ? el('p', { class: 'score-note' }, 'Also holds the ' + other.map(t => t.label.toLowerCase()).join(' and ') + ' record.') : null);
+    const a = cur.against[tr.id];
+    const gain = a && cur.record_of[tr.id] ? gainOf(cur, tr.id) : null;
+    const prevRec = a && cur.record_of[tr.id] ? data.all.find(x => x.id === a.record) : null;
+    const right = el('div', { class: 'facts' },
+      el('p', { class: 'who' }, el('a', { class: 'entry', href: page('submission.html', { id: cur.id }) }, nm(cur)),
+        el('span', { class: 'by' }, cur.author ? ['by ', ext(link.author(cur), cur.author)] : null, cur.agent ? [cur.author ? ' · ' : '', cur.agent] : null)),
+      el('p', { class: 'gain-line' }, gain !== null
+        ? [el('span', { class: 'gain-pill', title: `gain 1 − ${tr.sym} / ${tr.sym},record` }, el('span', { class: 'visually-hidden' }, 'gain '), pct(gain)), ' vs ',
+          el('a', { href: page('submission.html', { id: a.record }) }, prevRec ? nm(prevRec) : a.record),
+          a.S_record !== null ? el('span', { class: 'muted' }, ` (${fmtS(a.S_record, unitOf(cur, tr))} ${unitOf(cur, tr)})`) : null]
+        : el('span', { class: 'muted' }, cur.port_of ? 'The record re-run at a new contract pin.' : 'The first record of this track at its pin.')),
+      el('dl', { class: 'kv' },
+        el('dt', null, 'Date'), el('dd', null, timeEl(evaluatedAt(cur))),
+        el('dt', null, 'Pull request'), el('dd', null, ext(link.pr(cur), '#' + cur.pr)),
+        el('dt', null, 'Contract pin'), el('dd', null, cur.harness_commit ? ext(link.core(cur.harness_commit), short(cur.harness_commit)) : '–')),
+      el('p', { class: 'more' }, el('a', { class: 'button ghost small', href: page('submission.html', { id: cur.id }) }, 'Verdict, notes and code →')));
     box.append(el('div', { class: 'record' }, left, right));
   }
 
@@ -230,7 +229,7 @@
   // ---- leaderboard: every record of the track, newest first, grouped by contract pin ------------
   function leaderboard(recs, tr, data, nm) {
     document.getElementById('leaderboard-note').textContent =
-      `Every ${tr.label.toLowerCase()} record, newest first. A new record needs a score ${tr.sym} more than ${marginText(data)} below the standing record's, at the same contract pin. Gain: 1 \u2212 ${tr.sym} / ${tr.sym},record against the record it beat.`;
+      `Newest first. A new record must beat the standing one by more than ${marginText(data)} at the same contract pin. Gain: 1 \u2212 ${tr.sym} / ${tr.sym},record.`;
     document.getElementById('leaders-caption').textContent = `Every ${tr.label.toLowerCase()} record, newest first, grouped by contract pin`;
     const cols = 8;
     const th = (label, cls, title) => el('th', { scope: 'col', class: cls || null, title: title || null }, label);
@@ -245,7 +244,7 @@
         'the score of this track, ' + (oneUnit ? oneUnit : 'in each row\'s unit')),
       th('P_total (s)', 'num', 'the median of three timed passes\' totals'),
       th(mixed ? 'priced |\u03c0|' : hd.size[1], 'num', mixed ? 'the proof the row\'s score prices' : 'the priced proof\'s size'),
-      th('Gain', 'num'), th('Date')));
+      th('Gain', 'num', `1 \u2212 ${hd.sym} / ${hd.sym},record against the record it beat`), th('Date')));
     const tb = document.getElementById('leaders');
     tb.replaceChildren();
     if (!recs.length) {
@@ -266,7 +265,7 @@
       const a = e.against[tr.id];
       const isCur = data.record[tr.id] && data.record[tr.id].id === e.id;
       tb.append(el('tr', { class: isCur ? 'current' : null },
-        el('td', { class: 'num' }, String(n)),
+        el('td', { class: 'num rank' }, String(n)),
         el('td', null, el('a', { class: 'entry', href: page('submission.html', { id: e.id }) }, nm(e)),
           isCur ? [' ', el('span', { class: 'badge st-record' }, 'current')] : retiredIn(e, tr.id) ? [' ', badge('retired')] : null),
         el('td', null, e.author ? ext(link.author(e), e.author) : '–'),
@@ -328,9 +327,8 @@
     const item = (e, pos) => el('li', null,
       el('span', { class: 'pos' }, pos),
       el('span', null, badge(e.status), ' ', el('a', { class: 'entry', href: page('submission.html', { id: e.id }) }, nm(e)),
-        ' ', el('span', { class: 'muted' }, 'by '), e.author ? ext(link.author(e), e.author) : '–',
-        ' ', el('span', { class: 'muted' }, '('), ext(link.pr(e), '#' + e.pr), el('span', { class: 'muted' }, ')'),
-        e.confirming ? [' ', el('span', { class: 'muted' }, 'record candidate: confirmation run')] : null),
+        ' ', el('span', { class: 'meta' }, 'by ', e.author ? ext(link.author(e), e.author) : '–', ' \u00b7 ', ext(link.pr(e), '#' + e.pr),
+          e.confirming ? ' \u00b7 record candidate: confirmation run' : null)),
       el('span', { class: 'when' }, e.status === 'running' ? (e.started ? 'started ' + ago(e.started) : 'started')
         : (e.queued ? 'queued ' + ago(e.queued) : 'queued')));
     running.forEach(e => ol.append(item(e, '▸')));
@@ -349,7 +347,7 @@
     const chips = document.getElementById('chips');
     chips.replaceChildren();
     const chip = (key, label, n) => {
-      const b = el('button', { type: 'button', class: 'chip', 'data-key': key, 'aria-pressed': String(state.status === key) }, `${label} ${n}`);
+      const b = el('button', { type: 'button', class: 'chip', 'data-key': key, 'aria-pressed': String(state.status === key) }, label, ' ', el('span', { class: 'n' }, String(n)));
       b.addEventListener('click', () => { state.status = key; state.limit = PAGE; submissions(data, nm, key); });
       chips.append(b);
     };
@@ -362,28 +360,28 @@
     const tb = document.getElementById('subs');
     tb.replaceChildren();
     if (!sorted.length) {
-      tb.append(el('tr', { class: 'empty-row' }, el('td', { colspan: 9 }, 'No submissions yet. Open the first pull request and it is evaluated next.')));
+      tb.append(el('tr', { class: 'empty-row' }, el('td', { colspan: 7 }, 'No submissions yet. Open the first pull request and it is evaluated next.')));
     } else if (!rows.length) {
-      tb.append(el('tr', { class: 'empty-row' }, el('td', { colspan: 9 }, 'Nothing matches this filter.')));
+      tb.append(el('tr', { class: 'empty-row' }, el('td', { colspan: 7 }, 'Nothing matches this filter.')));
     }
     for (const e of rows.slice(0, state.limit)) {
       const n = rel.citeCount(e.pr);
       const credit = [];
       if (n) credit.push(el('span', { title: 'Pull requests by other authors, with a verdict, that say they build on this one' }, 'cited by ' + n));
-      if (e.builds_on.length) credit.push(el('span', { class: 'muted' }, (credit.length ? ', ' : '') + 'builds on ' + e.builds_on.map(k => '#' + k).join(' ')));
+      if (e.builds_on.length) credit.push(el('span', { class: 'muted', title: 'builds on ' + e.builds_on.map(k => '#' + k).join(', ') }, 'builds on ' + e.builds_on.map(k => '#' + k).join(' ')));
       tb.append(el('tr', null,
         el('td', null, badge(e.status), unverified(e) ? [' ', unverified(e)] : null),
         el('td', { class: 'wrap-ok' }, el('a', { class: 'entry', href: page('submission.html', { id: e.id }) }, nm(e)),
-          e.title ? el('span', { class: 'sub' }, e.title) : null),
-        el('td', { class: 'num' }, ext(link.pr(e), '#' + e.pr)),
-        el('td', null, e.author ? ext(link.author(e), e.author) : '–'),
-        el('td', null, el('span', { class: 'agent' }, e.agent || '–')),
+          el('span', { class: 'pr' }, ext(link.pr(e), '#' + e.pr)),
+          e.title ? el('span', { class: 'sub', title: e.title }, e.title) : null),
+        el('td', { class: 'who' }, e.author ? ext(link.author(e), e.author) : '–',
+          e.agent ? el('span', { class: 'agent', title: e.agent }, e.agent) : null),
         // (an earlier season's score, in another unit than the header's, carries its own)
         window.RF.TRACK_IDS.map(t => el('td', { class: 'num' }, scoreIn(e, t) !== null ? fmtS(scoreIn(e, t), unitOf(e, trackOf(t))) : '–',
           scoreIn(e, t) !== null && unitOf(e, trackOf(t)) !== trackOf(t).unit ? [' ', el('small', null, unitOf(e, trackOf(t)))] : null,
           e.record_in.includes(t) ? el('span', { class: 'rec-mark', title: retiredIn(e, t) ? 'took this track\'s record (retired since)' : 'took this track\'s record' }, retiredIn(e, t) ? ' \u2020' : ' \u2605') : null)),
         el('td', null, timeEl(e.finished || e.queued || e.opened)),
-        el('td', null, credit.length ? credit : '–')));
+        el('td', { class: 'credit' }, credit.length ? credit : '–')));
     }
     const more = document.getElementById('subs-more');
     more.replaceChildren();
@@ -424,7 +422,7 @@
         ext(link.repo + '/tree/data', 'data branch'), '.'), retry));
     const msg = 'Results unavailable.';
     document.getElementById('leaders').replaceChildren(el('tr', { class: 'empty-row' }, el('td', { colspan: 8 }, msg)));
-    document.getElementById('subs').replaceChildren(el('tr', { class: 'empty-row' }, el('td', { colspan: 9 }, msg)));
+    document.getElementById('subs').replaceChildren(el('tr', { class: 'empty-row' }, el('td', { colspan: 7 }, msg)));
     document.getElementById('queue').replaceChildren(el('li', { class: 'empty-li' }, el('span', { class: 'empty' }, msg)));
     document.getElementById('chart').replaceChildren();
     document.getElementById('chips').replaceChildren();

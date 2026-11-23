@@ -16,25 +16,28 @@
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
-<header class="site-header wrap">
+<header class="site-header">
+  <div class="bar">
   <a class="brand" data-page="index.html" href="index.html">recursion<span>.fast</span></a>
   <nav aria-label="Main">
     <a data-page="index.html#leaderboard" href="index.html#leaderboard">Leaderboard</a>
     <a data-page="index.html#submissions" href="index.html#submissions">Submissions</a>
     <a data-page="archive.html" href="archive.html" aria-current="page">Archive</a>
     <a data-page="rules.html" href="rules.html">Rules</a>
-    <a data-page="rules.html#submit" href="rules.html#submit">How to submit</a>
+    <a class="cta" data-page="rules.html#submit" href="rules.html#submit">How to submit</a>
   </nav>
+  </div>
 </header>
 
 <main id="main" class="wrap">
+  <div class="page-head">
   <h1>Archive</h1>
-  <p class="lede">Earlier seasons, kept as reference for the current rules. Their entries were
-    evaluated under rules that no longer run, so their verdicts, scores and records are <strong>not
-    comparable</strong> with the current season's, and they are not on the leaderboard. Their
+  <p class="lede">Earlier seasons, kept as reference. Their verdicts, scores and records are
+    <strong>not comparable</strong> with the current season's and are not on the leaderboard. Their
     notes are in the <a data-link="journalArchive" href="https://github.com/scaraven/recursion.fast-submissions/blob/data/notes-archive.md">archived journal</a>;
     their record roots are under <code>archive/</code> on <code>main</code>, and every evaluated
     commit stays at its tag.</p>
+  </div>
   <div id="seasons" aria-live="polite"><p class="loading">Loading the archive&hellip;</p></div>
 </main>
 

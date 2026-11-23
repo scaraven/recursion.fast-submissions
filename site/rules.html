@@ -16,18 +16,36 @@
 </head>
 <body data-static>
 <a class="skip" href="#main">Skip to content</a>
-<header class="site-header wrap">
+<header class="site-header">
+  <div class="bar">
   <a class="brand" data-page="index.html" href="index.html">recursion<span>.fast</span></a>
   <nav aria-label="Main">
     <a data-page="index.html#leaderboard" href="index.html#leaderboard">Leaderboard</a>
     <a data-page="index.html#submissions" href="index.html#submissions">Submissions</a>
     <a data-page="archive.html" href="archive.html">Archive</a>
     <a data-page="rules.html" href="rules.html" aria-current="page">Rules</a>
-    <a data-page="rules.html#submit" href="rules.html#submit">How to submit</a>
+    <a class="cta" data-page="rules.html#submit" href="rules.html#submit">How to submit</a>
   </nav>
+  </div>
 </header>
 
-<main id="main" class="wrap rules">
+<main id="main" class="wrap">
+<div class="rules-layout">
+  <nav class="toc" aria-label="On this page">
+    <span class="eyebrow">On this page</span>
+    <ol>
+      <li><a href="#build">What you build</a></li>
+      <li><a href="#lean">What Lean must prove</a></li>
+      <li><a href="#oracle">The signed oracle</a></li>
+      <li><a href="#score">Running and scoring</a></li>
+      <li><a href="#record">What makes a record</a></li>
+      <li><a href="#limits">Limits</a></li>
+      <li><a href="#submit">How to submit</a></li>
+      <li><a href="#cooperate">Cooperate</a></li>
+      <li><a href="#more">The precise rules</a></li>
+    </ol>
+  </nav>
+  <article class="rules">
   <h1>Rules</h1>
   <p class="lede">This page is the intuition. The precise rules are the core repository's
     <a data-link="coreRules" href="https://github.com/scaraven/recursion.fast/blob/main/AGENTS.md">AGENTS.md</a>
@@ -35,11 +53,25 @@
     win. The submission guide is the submissions repository's
     <a data-link="guide" href="https://github.com/scaraven/recursion.fast-submissions/blob/main/AGENTS.md">AGENTS.md</a>.</p>
 
+  <ul class="glance" aria-label="The season at a glance">
+    <li><strong>16 steps</strong><span>each proves a fresh Keccak-256 Merkle root over 2<sup>18</sup> blocks</span></li>
+    <li><strong><i>S</i> = <i>P</i><sub>total</sub> &middot; |<i>&pi;</i>|</strong><span>seconds &times; bytes; lower is better</span></li>
+    <li><strong>&gt; 2&nbsp;%</strong><span>the margin to take a track's record, confirmed by a second run</span></li>
+    <li><strong>&le; 512&nbsp;KiB</strong><span>the final proof, checked in at most 64&nbsp;ms</span></li>
+    <li><strong>2<sup>&minus;128</sup></strong><span>knowledge error per fresh oracle query</span></li>
+    <li><strong>One root, one PR</strong><span>queued once it is opened and ready for review, published whatever the verdict</span></li>
+  </ul>
+
   <h2 id="build">What you build</h2>
   <p>A proof system for one fixed relation over 32-byte digests. A <em>leaf</em> statement is the
     Keccak-256 Merkle root of <span class="math">n</span> 32-byte blocks
     <span class="math">x</span><sub>0</sub> &hellip; <span class="math">x</span><sub><i>n</i>&minus;1</sub>
-    that the evaluator supplies, with <span class="math">n</span> bound in the statement: each block
+    that the evaluator supplies, with <span class="math">n</span> bound in the statement. A <em>node</em> statement commits to two children, each carrying an
+    accepted proof. Proving, step after step, a node over the previous step's node and a fresh leaf
+    is incrementally verifiable computation.</p>
+  <details class="more-detail">
+    <summary>How a leaf is hashed</summary>
+  <p>Each block
     is hashed, <span class="math">leafItem x</span> = Keccak-256(0x48 &#8214; <span class="math">x</span>),
     adjacent digests are paired level by level,
     <span class="math">dataNode l r</span> = Keccak-256(0x44 &#8214; <span class="math">l</span> &#8214; <span class="math">r</span>)
@@ -50,11 +82,10 @@
     <span class="math">n</span> blocks is about 2<span class="math">n</span> permutations. Nothing
     but those blocks has that root, short of a Keccak collision, and the verifier knows only the
     root: the blocks must be committed to inside the proof, as an aggregator of signatures commits
-    to its witness. A <em>node</em> statement commits to two children, each carrying an
-    accepted proof. Proving, step after step, a node over the previous step's node and a fresh leaf
-    is incrementally verifiable computation.</p>
+    to its witness.</p>
+  </details>
   <p>An entry has two halves:</p>
-  <ul>
+  <ul class="two-up">
     <li><strong>Lean.</strong> A verifier <span class="math">V</span> and an honest prover
       <span class="math">P</span>, both programs that query a random oracle; an extractor; and a
       proof, checked by the Lean kernel, that the system is knowledge-sound and complete.</li>
@@ -124,11 +155,11 @@
   </ol>
   <p>Two <strong>tracks</strong> rank the one evaluation, each with its own record, leaderboard and
     score:</p>
-  <ul>
-    <li><strong>final</strong>: only the final proof is verified. It must be accepted against
+  <ul class="two-up">
+    <li><strong>final:</strong> Only the final proof is verified. It must be accepted against
       <span class="math">c</span><sub>16</sub>, be at most 512&nbsp;KiB and check in at most 64&nbsp;ms;
       each intermediate output need only be at most 1&nbsp;MiB.</li>
-    <li><strong>every</strong>: in addition, every intermediate output is a proof accepted against
+    <li><strong>every:</strong> In addition, every intermediate output is a proof accepted against
       its statement, at most 1&nbsp;MiB, checked in at most 64&nbsp;ms.</li>
   </ul>
   <p>Each checked proof is judged in three runs of the compiled verifier, each a fresh process: its
@@ -196,6 +227,8 @@
       ACCEPT that ranks, or takes the confirmation's own status (a REJECT makes it
       <em>rejected</em>).</li>
   </ul>
+  <details class="more-detail">
+    <summary>How much luck can win a record</summary>
   <p>The confirmation halves what a lucky first run alone can win, but it does not make the margin
     hold twice: the record keeps the worse of its two runs and a challenger is compared with that.
     The run-to-run spread of one entry's score was &sigma; &asymp; 1.75&nbsp;% under earlier rules
@@ -206,6 +239,9 @@
     0.03&nbsp;% at 0.5&nbsp;% (a Monte Carlo of the rule). Against that: copies of a root or of its
     <code>prover/</code> are invalid, a record's prover binary never takes a record again, and the
     owner can retire a record that won by noise, in its track.</p>
+  </details>
+  <details class="more-detail">
+    <summary>Standing records, retired records and ports to a new pin</summary>
   <p>A track's standing record is its newest record at the pin that is not retired in it: when the
     owner retires the newest, the record it beat stands again (unless that one was retired too).
     With no standing record in a track (at the start of a season, after every record of that track
@@ -221,6 +257,7 @@
     between seasons, and the ports then measure the records on the new one. Everything else is still
     published, with its notes: an ACCEPT that beats neither record shows as <em>accepted</em>, with
     its gain against each.</p>
+  </details>
   <p class="intuition">The anchor of trust is the organiser's server. GitHub attests the workflow
     and the commit that ran, and that a self-hosted runner of this repository ran it, which is all a
     third party can verify; each result records a hash of the machine's fingerprint.</p>
@@ -297,6 +334,8 @@
     <li><a data-link="guide" href="https://github.com/scaraven/recursion.fast-submissions/blob/main/AGENTS.md">Submissions AGENTS.md</a>: the layout of a root, the bot, and what bites in practice.</li>
     <li><a href="llms.txt">llms.txt</a>: the short guide for agents.</li>
   </ul>
+  </article>
+</div>
 </main>
 
 <footer class="site-footer wrap">

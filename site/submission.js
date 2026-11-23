@@ -44,9 +44,9 @@
       el('div', { class: 'badges' }, badge(e.status), unverified(e),
         RF.TRACKS.filter(t => data.record[t.id] && data.record[t.id].id === e.id)
           .map(t => el('span', { class: 'badge st-record' }, 'current ' + t.label.toLowerCase() + ' record')),
-        e.verdict ? el('span', null, 'verdict ' + e.verdict) : null,
-        el('span', null, RF.STATUS_INFO[e.status][1])),
-      e.title ? el('p', { class: 'title' }, el('span', { class: 'muted' }, 'Pull request title (written by the submitter): '), e.title) : null));
+        e.verdict ? el('span', { class: 'verdict-tag', title: 'the verdict' }, e.verdict) : null),
+      el('p', { class: 'status-desc' }, RF.STATUS_INFO[e.status][1]),
+      e.title ? el('p', { class: 'title' }, el('span', { class: 'muted' }, 'Pull request title, written by the submitter'), e.title) : null));
 
     // an archived season's entry: its numbers are that season's, not the current season's
     if (e.season) {
@@ -72,6 +72,8 @@
         el('a', { href: page('archive.html') + '#' + sn.id }, 'The archive'),
         sn.dir ? [' · ', ext(link.mainDir(sn.dir), 'its record roots on main')] : null));
     }
+
+    const head = parts.splice(0);    // the heading (and an archived banner) span the page; the rest goes in two columns
 
     // numbers: each track's score, with its own components (P_total and its own priced proof's size) and
     // its comparison with the track's record (v6: S in `final`, S_every in `every`, or `final` only;
@@ -102,9 +104,9 @@
       if (a) {
         const g = gainOf(e, tr.id);
         parts.push(el('p', { class: 'against' },
-          el('strong', null, a.beats ? `Beat the standing ${tr.label.toLowerCase()} record.` : `Did not beat the standing ${tr.label.toLowerCase()} record.`), ' ',
-          `${field || tr.sym} = ${fmtS(a.S !== null ? a.S : v, pt.unit)} ${pt.unit} against ${fmtS(a.S_record, pt.unit)} ${pt.unit} of the record `, recOf(a.record),
-          `, at the same contract pin: gain = ${pct(g)}. A record needs a gain of more than ${marginText(data)}.`));
+          el('span', { class: a.beats ? 'gain-pill' : 'gain-pill plain', title: `gain 1 \u2212 ${field || tr.sym} / ${field || tr.sym},record` }, el('span', { class: 'visually-hidden' }, 'gain '), pct(g)),
+          el('span', null, el('strong', null, a.beats ? `Beat the ${tr.label.toLowerCase()} record ` : `Did not beat the ${tr.label.toLowerCase()} record `), recOf(a.record),
+            el('span', { class: 'muted' }, `: ${field || tr.sym} = ${fmtS(a.S !== null ? a.S : v, pt.unit)} against ${fmtS(a.S_record, pt.unit)} ${pt.unit}, at the same contract pin; a record needs more than ${marginText(data)}.`))));
       } else if (took && !e.record_of[tr.id]) {
         parts.push(el('p', { class: 'against' }, e.port_of ? `The previous pin's ${tr.label.toLowerCase()} record, re-run at a new contract pin before any other entry.`
           : `No ${tr.label.toLowerCase()} record stood at its contract pin when it was evaluated, so it took the record of this track.`));
@@ -115,7 +117,7 @@
     if (e.reasons.length) {
       parts.push(el('section', { class: 'panel', 'aria-labelledby': 'h-reasons' },
         el('h2', { id: 'h-reasons' }, e.status === 'record' || e.status === 'accepted' ? 'Notes from the evaluation' : 'Reasons'),
-        el('ul', { class: 'reasons' }, e.reasons.map(r => el('li', null, el('code', null, r))))));
+        el('ul', { class: 'eval-notes' }, e.reasons.map(r => el('li', null, r)))));
     }
 
     // facts and links
@@ -157,8 +159,9 @@
         return [other[0] && other[0] !== e.run_url ? el('li', null, ext(other[0], `Actions run (the ${other[2]})`)) : null,
           other[1] && other[1] !== e.result ? el('li', null, el('a', { href: link.resultAt(other[1]), rel: 'noopener noreferrer' }, `Result JSON (the ${other[2]})`)) : null];
       })());
-    parts.push(el('section', { class: 'panel', 'aria-labelledby': 'h-facts' }, el('h2', { id: 'h-facts' }, 'Details'), facts));
-    parts.push(el('section', { class: 'panel', 'aria-labelledby': 'h-links' }, el('h2', { id: 'h-links' }, 'Links'), links));
+    const side = [];
+    side.push(el('section', { class: 'side-card', 'aria-labelledby': 'h-links' }, el('h2', { id: 'h-links' }, 'Links'), links));
+    side.push(el('section', { class: 'side-card', 'aria-labelledby': 'h-facts' }, el('h2', { id: 'h-facts' }, 'Details'), facts));
 
     // credit
     const prRef = n => {
@@ -173,7 +176,7 @@
       else if (c.pending) li.append(el('span', { class: 'muted' }, ' no verdict yet, not counted'));
       return li;
     };
-    parts.push(el('section', { class: 'panel', 'aria-labelledby': 'h-credit' },
+    side.push(el('section', { class: 'side-card', 'aria-labelledby': 'h-credit' },
       el('h2', { id: 'h-credit' }, 'Builds on and cited by'),
       el('dl', { class: 'kv' },
         dt('Builds on', e.builds_on.length ? el('ul', { class: 'reasons' }, e.builds_on.map(prRef)) : 'nothing declared'),
@@ -182,7 +185,7 @@
     // other heads of the same pull request
     const heads = (rel.byPr.get(e.pr) || []).filter(x => x.id !== e.id);
     if (heads.length) {
-      parts.push(el('section', { class: 'panel', 'aria-labelledby': 'h-heads' },
+      side.push(el('section', { class: 'side-card', 'aria-labelledby': 'h-heads' },
         el('h2', { id: 'h-heads' }, 'Other heads of this pull request'),
         el('ul', { class: 'reasons' }, heads.map(x => el('li', null, badge(x.status), ' ', subLink(x, x.id), ' ', timeEl(x.queued || x.opened))))));
     }
@@ -201,7 +204,7 @@
         const dl = el('dl', { class: 'kv' });
         const show = x => typeof x === 'number' ? String(+x.toPrecision(6)) : String(x);
         for (const [k, v] of rest.concat(other)) dl.append(...dt(el('code', null, k), Array.isArray(v) ? v.map(show).join(', ') : show(v)));
-        parts.push(el('section', { class: 'panel' }, el('details', { class: 'readme' }, el('summary', null, 'Every measured number'), dl)));
+        side.push(el('section', { class: 'side-card' }, el('details', { class: 'readme' }, el('summary', null, 'Every measured number'), dl)));
       }
     }
 
@@ -219,7 +222,8 @@
       det.addEventListener('toggle', () => { if (det.open && !loaded) { loaded = true; markdown(readme, e.readme, e, 'README.md'); } });
       parts.push(el('section', { class: 'panel' }, det));
     }
-    box.replaceChildren(...parts);
+    box.replaceChildren(...head, el('div', { class: 'detail-grid' },
+      el('div', { class: 'detail-main' }, ...parts), el('aside', { class: 'detail-side', 'aria-label': 'About this submission' }, ...side)));
     if (e.notes) markdown(notes, e.notes, e, 'NOTES.md');
   }
 
