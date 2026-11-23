@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- CSP: connect-src must name the origin of DATA_BASE in config.js; keep the pages equal -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://raw.githubusercontent.com; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://raw.githubusercontent.com; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <title>Rules · recursion.fast</title>
 <meta name="description" content="The recursion.fast rules in plain words: what you build, what Lean must prove, how an evaluation is run and scored in its two tracks, what makes a record and how to submit.">
@@ -32,7 +32,6 @@
 <main id="main" class="wrap">
 <div class="rules-layout">
   <nav class="toc" aria-label="On this page">
-    <span class="eyebrow">On this page</span>
     <ol>
       <li><a href="#build">What you build</a></li>
       <li><a href="#lean">What Lean must prove</a></li>
@@ -53,14 +52,14 @@
     win. The submission guide is the submissions repository's
     <a data-link="guide" href="https://github.com/scaraven/recursion.fast-submissions/blob/main/AGENTS.md">AGENTS.md</a>.</p>
 
-  <ul class="glance" aria-label="The season at a glance">
-    <li><strong>16 steps</strong><span>each proves a fresh Keccak-256 Merkle root over 2<sup>18</sup> blocks</span></li>
-    <li><strong><i>S</i> = <i>P</i><sub>total</sub> &middot; |<i>&pi;</i>|</strong><span>seconds &times; bytes; lower is better</span></li>
-    <li><strong>&gt; 2&nbsp;%</strong><span>the margin to take a track's record, confirmed by a second run</span></li>
-    <li><strong>&le; 512&nbsp;KiB</strong><span>the final proof, checked in at most 64&nbsp;ms</span></li>
-    <li><strong>2<sup>&minus;128</sup></strong><span>knowledge error per fresh oracle query</span></li>
-    <li><strong>One root, one PR</strong><span>queued once it is opened and ready for review, published whatever the verdict</span></li>
-  </ul>
+  <dl class="glance" role="group" aria-label="The season at a glance">
+    <div><dt>16 steps</dt><dd>Each proves a fresh Keccak-256 Merkle root over 2<sup>18</sup> blocks.</dd></div>
+    <div><dt><i>S</i> = <i>P</i><sub>total</sub> &middot; |<i>&pi;</i>|</dt><dd>Seconds &times; bytes; lower is better.</dd></div>
+    <div><dt>&gt; 2&nbsp;%</dt><dd>The margin to take a track's record, confirmed by a second run.</dd></div>
+    <div><dt>&le; 512&nbsp;KiB</dt><dd>The final proof, checked in at most 64&nbsp;ms.</dd></div>
+    <div><dt>2<sup>&minus;128</sup></dt><dd>Knowledge error per fresh oracle query.</dd></div>
+    <div><dt>One root, one PR</dt><dd>Queued once it is opened and ready for review, published whatever the verdict.</dd></div>
+  </dl>
 
   <h2 id="build">What you build</h2>
   <p>A proof system for one fixed relation over 32-byte digests. A <em>leaf</em> statement is the

@@ -65,35 +65,32 @@
     const sc = window.RF.partsIn(cur.score, tr.id);     // this track's run's parts (a confirmed record)
     // this track's own priced proof (`final`: the final proof; `every`: the largest), its size in
     // bytes the factor (an earlier v6 season's result: its exponential factor of that size)
-    const pt = window.RF.pricedBy(tr, sc), [sk, sl] = pt.size;
-    const part = (sym, val, extra) => el('span', { class: 'part' }, el('span', { class: 'math' }, sym), val, extra || null);
-    const split = [part('P_total', fmtS(sc.P_total_s) + ' s'), el('span', { class: 'op', 'aria-label': 'times' }, '×'),
-      pt.old ? part(pt.factorText, fmtPart(sc[pt.factor], ''), el('span', { class: 'muted' }, ` (${sl} = ${window.RF.fmtBytes(sc[sk])})`))
-        : part(sl, fmtPart(sc[sk], 'B'))];
+    const pt = window.RF.pricedBy(tr, sc);
     const other = window.RF.TRACKS.filter(t => t.id !== tr.id && data.record[t.id] && data.record[t.id].id === cur.id);
-    const left = el('div', null,
+    const top = el('div', { class: 'eq-area' },
       el('h2', null, `Current ${tr.label.toLowerCase()} record`),
-      el('p', { class: 'score-big' }, el('span', { class: 'math' }, pt.sym), fmtS(scoreIn(cur, tr.id), pt.unit), el('span', { class: 'unit' }, window.RF.unitNode(pt.unit))),
-      el('p', { class: 'score-split' }, el('span', { class: 'visually-hidden' }, '= '), split),
+      el('p', { class: 'score-big' }, fmtS(scoreIn(cur, tr.id), pt.unit), el('span', { class: 'unit' }, window.RF.unitNode(pt.unit))),
+      window.RF.equation(pt, sc, tr.label.toLowerCase()),
       el('p', { class: 'score-note' }, pt.note),
-      other.length ? el('p', { class: 'score-note' }, 'Also holds the ' + other.map(t => t.label.toLowerCase()).join(' and ') + ' record.') : null);
+      other.length ? el('p', { class: 'score-note' }, 'It also holds the ' + other.map(t => t.label.toLowerCase()).join(' and ') + ' record.') : null);
     const a = cur.against[tr.id];
     const gain = a && cur.record_of[tr.id] ? gainOf(cur, tr.id) : null;
     const prevRec = a && cur.record_of[tr.id] ? data.all.find(x => x.id === a.record) : null;
-    const right = el('div', { class: 'facts' },
-      el('p', { class: 'who' }, el('a', { class: 'entry', href: page('submission.html', { id: cur.id }) }, nm(cur)),
-        el('span', { class: 'by' }, cur.author ? ['by ', ext(link.author(cur), cur.author)] : null, cur.agent ? [cur.author ? ' · ' : '', cur.agent] : null)),
-      el('p', { class: 'gain-line' }, gain !== null
-        ? [el('span', { class: 'gain-pill', title: `gain 1 − ${tr.sym} / ${tr.sym},record` }, el('span', { class: 'visually-hidden' }, 'gain '), pct(gain)), ' vs ',
-          el('a', { href: page('submission.html', { id: a.record }) }, prevRec ? nm(prevRec) : a.record),
-          a.S_record !== null ? el('span', { class: 'muted' }, ` (${fmtS(a.S_record, unitOf(cur, tr))} ${unitOf(cur, tr)})`) : null]
-        : el('span', { class: 'muted' }, cur.port_of ? 'The record re-run at a new contract pin.' : 'The first record of this track at its pin.')),
+    const cite = el('div', { class: 'cite' },
+      el('div', null,
+        el('p', { class: 'who' }, el('a', { class: 'entry', href: page('submission.html', { id: cur.id }) }, nm(cur)),
+          el('span', { class: 'by' }, cur.author ? ['by ', ext(link.author(cur), cur.author)] : null, cur.agent ? [cur.author ? ', with ' : 'With ', cur.agent] : null)),
+        el('p', { class: 'gain-line' }, gain !== null
+          ? [el('span', { class: 'gain-pill', title: `gain 1 \u2212 ${tr.sym} / ${tr.sym},record` }, el('span', { class: 'visually-hidden' }, 'gain '), pct(gain)), ' against ',
+            el('a', { href: page('submission.html', { id: a.record }) }, prevRec ? nm(prevRec) : a.record),
+            a.S_record !== null ? el('span', { class: 'muted' }, ` (${fmtS(a.S_record, unitOf(cur, tr))} ${unitOf(cur, tr)})`) : null]
+          : el('span', { class: 'muted' }, cur.port_of ? 'The record re-run at a new contract pin.' : 'The first record of this track at its pin.')),
+        el('p', { class: 'more' }, el('a', { href: page('submission.html', { id: cur.id }) }, 'Read its verdict, notes and code'))),
       el('dl', { class: 'kv' },
         el('dt', null, 'Date'), el('dd', null, timeEl(evaluatedAt(cur))),
         el('dt', null, 'Pull request'), el('dd', null, ext(link.pr(cur), '#' + cur.pr)),
-        el('dt', null, 'Contract pin'), el('dd', null, cur.harness_commit ? ext(link.core(cur.harness_commit), short(cur.harness_commit)) : '–')),
-      el('p', { class: 'more' }, el('a', { class: 'button ghost small', href: page('submission.html', { id: cur.id }) }, 'Verdict, notes and code →')));
-    box.append(el('div', { class: 'record' }, left, right));
+        el('dt', null, 'Contract pin'), el('dd', null, cur.harness_commit ? ext(link.core(cur.harness_commit), short(cur.harness_commit)) : '\u2013')));
+    box.append(el('div', { class: 'record' }, top, cite));
   }
 
   // ---- progression chart ----------------------------------------------------------------------
@@ -242,8 +239,8 @@
     document.getElementById('leaders-head').replaceChildren(el('tr', null,
       th('#', 'num'), th('Entry'), th('Author'), th([hd.sym, oneUnit ? [' (', window.RF.unitNode(oneUnit), ')'] : null], 'num',
         'the score of this track, ' + (oneUnit ? oneUnit : 'in each row\'s unit')),
-      th('P_total (s)', 'num', 'the median of three timed passes\' totals'),
-      th(mixed ? 'priced |\u03c0|' : hd.size[1], 'num', mixed ? 'the proof the row\'s score prices' : 'the priced proof\'s size'),
+      th([window.RF.mathText('P_total'), ' (s)'], 'num', 'the median of three timed passes\' totals'),
+      th(mixed ? 'priced |\u03c0|' : window.RF.mathText(hd.size[1]), 'num', mixed ? 'the proof the row\'s score prices' : 'the priced proof\'s size'),
       th('Gain', 'num', `1 \u2212 ${hd.sym} / ${hd.sym},record against the record it beat`), th('Date')));
     const tb = document.getElementById('leaders');
     tb.replaceChildren();
@@ -327,8 +324,8 @@
     const item = (e, pos) => el('li', null,
       el('span', { class: 'pos' }, pos),
       el('span', null, badge(e.status), ' ', el('a', { class: 'entry', href: page('submission.html', { id: e.id }) }, nm(e)),
-        ' ', el('span', { class: 'meta' }, 'by ', e.author ? ext(link.author(e), e.author) : '–', ' \u00b7 ', ext(link.pr(e), '#' + e.pr),
-          e.confirming ? ' \u00b7 record candidate: confirmation run' : null)),
+        ' ', el('span', { class: 'meta' }, 'by ', e.author ? ext(link.author(e), e.author) : '–', ', ', ext(link.pr(e), '#' + e.pr),
+          e.confirming ? '; a record candidate\u2019s confirmation run' : null)),
       el('span', { class: 'when' }, e.status === 'running' ? (e.started ? 'started ' + ago(e.started) : 'started')
         : (e.queued ? 'queued ' + ago(e.queued) : 'queued')));
     running.forEach(e => ol.append(item(e, '▸')));

@@ -453,6 +453,34 @@
     const [label, desc] = STATUS_INFO[status] || [status, ''];
     return el('span', { class: 'badge st-' + status, title: desc }, label);
   }
+  // A result's score in a track as a displayed equation: the track's formula, then the values of its
+  // factors (this season: P_total and the priced proof's size; an earlier v6 season's: P_total and the
+  // size factor, with the proof size beside it), and an optional tag such as the track's name.
+  // A symbol as math: italic, with `_suffix` (`P_total`, `S_every`) and Unicode subscripts (`π₁₆`,
+  // `πᵢ`) set as <sub> in the text's own digits and letters, which the vendored subsets cover.
+  const SUBS = { '₀': '0', '₁': '1', '₂': '2', '₃': '3', '₄': '4', '₅': '5', '₆': '6', '₇': '7', '₈': '8', '₉': '9', 'ᵢ': 'i' };
+  function mathText(s) {
+    const str = String(s), kids = [];
+    let at = 0;
+    for (const m of str.matchAll(/_([A-Za-z0-9]+)|([₀-₉ᵢ]+)/g)) {
+      kids.push(str.slice(at, m.index), el('sub', null, m[1] || [...m[2]].map(c => SUBS[c]).join('')));
+      at = m.index + m[0].length;
+    }
+    kids.push(str.slice(at));
+    return el('span', { class: 'math' }, kids);
+  }
+  // A result's score in a track as a displayed equation: the track's formula, then the values of its
+  // factors (this season: P_total and the priced proof's size; an earlier v6 season's: P_total and the
+  // size factor, with the proof size beside it), and an optional tag such as the track's name. Each
+  // operator stays on the line of the value after it.
+  function equation(pt, sc, tag) {
+    const val = ([k, , unit]) => unit === 's' ? (Number.isFinite(sc[k]) ? fmtS(sc[k]) + ' s' : '–') : fmtPart(sc[k], unit);
+    const mult = pt.old ? pt.parts.slice(0, 2) : pt.parts;
+    return el('p', { class: 'equation' }, mathText(pt.formula),
+      mult.map((p, i) => el('span', { class: 'term' }, (i ? '×' : '=') + ' ' + val(p))),
+      pt.old ? el('span', { class: 'muted' }, '(', mathText(pt.size[1]), ` = ${fmtBytes(sc[pt.size[0]])})`) : null,
+      tag ? el('span', { class: 'eq-tag' }, '(' + tag + ')') : null);
+  }
   const shortSha = s => s ? s.slice(0, 7) : '';
   const noRecords = () => Object.fromEntries(TRACK_IDS.map(t => [t, null]));
   // The gain 1 - S/S_record against the track's standing record, in percent (positive = faster), or null.
@@ -594,7 +622,7 @@
 
   window.RF = {
     CFG, BASE, dataKey, STATUSES, STATUS_INFO, RE, TRACKS, TRACK_IDS, trackOf, pricedBy, productRule, UNIT, unitNode, partsIn, scoreIn, retiredIn, chosenTrack, rememberTrack,
-    loadData, loadText, el, svg, ext, page, link, fmtS, fmtPart, fmtBytes, fmtDate, fmtDateTime, timeEl, ago, badge,
+    loadData, loadText, el, svg, ext, page, link, fmtS, fmtPart, fmtBytes, fmtDate, fmtDateTime, timeEl, ago, badge, equation, mathText,
     shortSha, gainOf, marginText, pct, unverified, evaluatedAt, relations, records, nameOf, section, chrome, footer
   };
   document.addEventListener('DOMContentLoaded', chrome);

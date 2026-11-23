@@ -90,23 +90,20 @@
       // how this result is priced in the track (this season: the proof size in bytes, the score in
       // s\u00b7B; an earlier v6 season's result: its exponential factor of the size, the score in seconds)
       const pt = RF.pricedBy(tr, RF.partsIn(sc, tr.id));
-      const m = (lbl, val, unit, note) => el('div', null, el('span', { class: 'lbl' }, lbl),
-        el('span', { class: 'val' }, unit === 'score' ? fmtS(val, pt.unit) : fmtPart(val, unit),
-          unit === 's' ? [' ', el('small', null, 's')] : unit === 'score' ? [' ', el('small', null, RF.unitNode(pt.unit))] : null),
-        note ? el('span', { class: 'lbl' }, note) : null);
       const took = e.record_in.includes(tr.id);
-      parts.push(el('h2', { class: 'track-head' }, tr.label, ' ', el('span', { class: 'tab-formula' }, repeat ? `the same ${field} = ${fmtS(v, pt.unit)} ${pt.unit}` : pt.formula),
+      parts.push(el('h2', { class: 'track-head' }, tr.label, repeat ? [' ', el('span', { class: 'tab-formula' }, `the same ${field} = ${fmtS(v, pt.unit)} ${pt.unit}`)] : null,
         took ? [' ', el('span', { class: 'badge ' + (retiredIn(e, tr.id) ? 'st-retired' : 'st-record') }, retiredIn(e, tr.id) ? 'record, retired' : 'took the record')] : null));
-      if (!repeat) parts.push(el('div', { class: 'metrics m' + (pt.parts.length + 1), role: 'group', 'aria-label': tr.label + ' score' },
-        m('Score ' + (field || tr.sym), v, 'score', 'lower is better'),
-        pt.parts.map(([k, label, unit, note]) => m(label, RF.partsIn(sc, tr.id)[k], unit, note || pt.desc[k] || null))));
+      if (!repeat) parts.push(el('div', { class: 'eq-block', role: 'group', 'aria-label': tr.label + ' score' },
+        el('p', { class: 'score-big' }, el('span', { class: 'visually-hidden' }, (field || tr.sym).replace('_', ' ') + ' = '), fmtS(v, pt.unit), el('span', { class: 'unit' }, RF.unitNode(pt.unit))),
+        RF.equation(pt, RF.partsIn(sc, tr.id)),
+        el('p', { class: 'score-note' }, pt.parts.map(([k, label, , note], i) => [i ? '; ' : '', RF.mathText(label), ': ', note || pt.desc[k]]), '. Lower is better.')));
       const a = e.against[tr.id];
       if (a) {
         const g = gainOf(e, tr.id);
         parts.push(el('p', { class: 'against' },
           el('span', { class: a.beats ? 'gain-pill' : 'gain-pill plain', title: `gain 1 \u2212 ${field || tr.sym} / ${field || tr.sym},record` }, el('span', { class: 'visually-hidden' }, 'gain '), pct(g)),
           el('span', null, el('strong', null, a.beats ? `Beat the ${tr.label.toLowerCase()} record ` : `Did not beat the ${tr.label.toLowerCase()} record `), recOf(a.record),
-            el('span', { class: 'muted' }, `: ${field || tr.sym} = ${fmtS(a.S !== null ? a.S : v, pt.unit)} against ${fmtS(a.S_record, pt.unit)} ${pt.unit}, at the same contract pin; a record needs more than ${marginText(data)}.`))));
+            el('span', { class: 'muted' }, ': ', RF.mathText(field || tr.sym), ` = ${fmtS(a.S !== null ? a.S : v, pt.unit)} against ${fmtS(a.S_record, pt.unit)} ${pt.unit}, at the same contract pin; a record needs more than ${marginText(data)}.`))));
       } else if (took && !e.record_of[tr.id]) {
         parts.push(el('p', { class: 'against' }, e.port_of ? `The previous pin's ${tr.label.toLowerCase()} record, re-run at a new contract pin before any other entry.`
           : `No ${tr.label.toLowerCase()} record stood at its contract pin when it was evaluated, so it took the record of this track.`));

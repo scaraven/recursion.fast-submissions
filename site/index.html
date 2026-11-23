@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- CSP: connect-src must name the origin of DATA_BASE in config.js; keep the pages equal -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://raw.githubusercontent.com; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://raw.githubusercontent.com; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <title>recursion.fast</title>
 <meta name="description" content="Recursive proofs of Keccak-256 hashing, fast, with Lean-certified soundness. The records of the two tracks (final and every), the leaderboards and every submission.">
@@ -34,19 +34,19 @@
 
 <main id="main" class="wrap">
   <section class="hero" aria-labelledby="title">
-    <h1 id="title">Recursive proofs of Keccak-256 hashing, <em>fast</em>, with Lean-certified soundness.</h1>
+    <h1 id="title">Recursive proofs of <span class="nowrap">Keccak-256</span> hashing, fast, with <span class="nowrap">Lean-certified</span> soundness.</h1>
     <p class="lede">Design a hash-based proof system, prove in Lean that it is knowledge-sound and
       complete, and ship an x86-64 assembly prover. The organiser's server times it; the lowest
       prover time &times; proof size wins.</p>
-    <ul class="facts-row">
-      <li><strong>16 steps</strong><span>each proves a fresh Merkle root over 2<sup>18</sup> blocks (about 2<sup>19</sup> hashes) and folds it into the running proof</span></li>
-      <li><strong><span class="math">S</span> = <span class="math">P</span><sub>total</sub> &middot; |<span class="math">&pi;</span>|</strong><span>median of three timed passes, times the priced proof's bytes</span></li>
-      <li><strong>Two tracks</strong><span><b>final</b> verifies the last proof, <b>every</b> verifies all sixteen</span></li>
-    </ul>
-    <div class="actions">
+    <dl class="facts">
+      <div><dt>16 steps</dt><dd>Each proves a fresh Merkle root over 2<sup>18</sup> blocks (about 2<sup>19</sup> hashes) and folds it into the running proof.</dd></div>
+      <div><dt><i>S</i> = <i>P</i><sub>total</sub> &middot; |<i>&pi;</i>|</dt><dd>The median of three timed passes, times the priced proof's size in bytes. Lower wins.</dd></div>
+      <div><dt>Two tracks</dt><dd><b>final</b> verifies the last proof; <b>every</b> verifies all sixteen.</dd></div>
+    </dl>
+    <p class="actions">
       <a class="button" data-page="rules.html#submit" href="rules.html#submit">How to submit</a>
-      <a class="button ghost" data-page="rules.html#score" href="rules.html#score">How scoring works</a>
-    </div>
+      <a class="quiet-link" data-page="rules.html#score" href="rules.html#score">How scoring works</a>
+    </p>
     <figure class="hero-fig" id="hero">
       <svg viewBox="87.06 42.47 297.33 340.85" role="img" aria-label="An illustration from the earlier rules' stream of 96 steps: ninety-seven dotted arms of different lengths, one per hash chain, winding clockwise into one spiral line that ends in a small disc marked pi. This season's stream is sixteen steps of one fresh leaf each."></svg>
     </figure>

@@ -15,6 +15,7 @@ verdict appears without redeploying (raw.githubusercontent.com caches for about 
 | `config.js` | the repository names and where the data is read from |
 | `common.js`, `style.css`, `favicon.svg` | shared code and styles |
 | `vendor/` | marked and DOMPurify, unmodified upstream files, with their licences and `SHA256SUMS` |
+| `fonts/` | the two typefaces, unmodified `woff2` files from Fontsource 5.3.0 (latin and greek subsets): STIX Two Text (headlines, scores, formulas) and IBM Plex Sans (the interface), both SIL OFL 1.1 (`OFL-*.txt`), with `SHA256SUMS`; `style.css` declares them under the names `RF STIX Two Text` and `RF IBM Plex Sans`, so a locally installed copy never shadows them, and the CSP allows `font-src 'self'` only |
 | `demo/` | fictional data for previews: `?data=demo`, and `?data=demo-empty` for launch day (scores at the v6 committed-leaf shape and this season's rule: `M = 16`, `size_factor` = `final_pi_bytes`, `S = P_total_s · final_pi_bytes` and `S_every = P_total_s · max_pi_bytes` in seconds · bytes, `pass_totals_s`; records with their `confirmation`, one of them, `pr15-88ac9a1a0f02`, keeping a different run per track in `score.by_track`; a record retired in `final`, so the one it beat stands again; two archived season-1 entries, `pr1-…` and `pr2-…`, and its `notes-archive.md`) |
 
 ## Preview locally
@@ -59,7 +60,7 @@ account (Settings, Pages, Verified domains) prevents takeover if Pages is ever d
 Copy `site/` to any static host (Netlify, Cloudflare Pages, S3, nginx). Nothing else is needed: no
 server code, no secrets, no third-party origin. Reading the data from somewhere else takes one
 config edit **plus** the CSP: change `DATA_BASE` (and `MAIN_BASE`) in `config.js`, and the `connect-src` of the
-Content-Security-Policy `<meta>` in each of the three `.html` files (each carries a comment saying
+Content-Security-Policy `<meta>` in each of the four `.html` files (each carries a comment saying
 so). Forgetting the second makes the browser refuse the fetch.
 
 Until branch `data` exists the site shows "no results yet": a 404 of `submissions.json` is read as
