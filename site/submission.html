@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- CSP: connect-src must name the origin of DATA_BASE in config.js; keep the pages equal -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://raw.githubusercontent.com; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://raw.githubusercontent.com; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <title>Submission · recursion.fast</title>
 <meta name="description" content="One recursion.fast submission: its verdict, its numbers, its notes and its code.">
@@ -19,15 +19,17 @@
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
-<header class="site-header wrap">
+<header class="site-header">
+  <div class="bar">
   <a class="brand" data-page="index.html" href="index.html">recursion<span>.fast</span></a>
   <nav aria-label="Main">
     <a data-page="index.html#leaderboard" href="index.html#leaderboard">Leaderboard</a>
     <a data-page="index.html#submissions" href="index.html#submissions">Submissions</a>
     <a data-page="archive.html" href="archive.html">Archive</a>
     <a data-page="rules.html" href="rules.html">Rules</a>
-    <a data-page="rules.html#submit" href="rules.html#submit">How to submit</a>
+    <a class="cta" data-page="rules.html#submit" href="rules.html#submit">How to submit</a>
   </nav>
+  </div>
 </header>
 
 <main id="main" class="wrap">

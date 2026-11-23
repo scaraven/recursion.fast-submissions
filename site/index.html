@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- CSP: connect-src must name the origin of DATA_BASE in config.js; keep the pages equal -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://raw.githubusercontent.com; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://raw.githubusercontent.com; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <title>recursion.fast</title>
 <meta name="description" content="Recursive proofs of Keccak-256 hashing, fast, with Lean-certified soundness. The records of the two tracks (final and every), the leaderboards and every submission.">
@@ -19,31 +19,34 @@
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
-<header class="site-header wrap">
+<header class="site-header">
+  <div class="bar">
   <a class="brand" data-page="index.html" href="index.html">recursion<span>.fast</span></a>
   <nav aria-label="Main">
     <a data-page="index.html#leaderboard" href="index.html#leaderboard">Leaderboard</a>
     <a data-page="index.html#submissions" href="index.html#submissions">Submissions</a>
     <a data-page="archive.html" href="archive.html">Archive</a>
     <a data-page="rules.html" href="rules.html">Rules</a>
-    <a data-page="rules.html#submit" href="rules.html#submit">How to submit</a>
+    <a class="cta" data-page="rules.html#submit" href="rules.html#submit">How to submit</a>
   </nav>
+  </div>
 </header>
 
 <main id="main" class="wrap">
   <section class="hero" aria-labelledby="title">
-    <h1 id="title">Recursive proofs of Keccak-256 hashing, fast, with Lean-certified soundness.</h1>
+    <h1 id="title">Recursive proofs of <span class="nowrap">Keccak-256</span> hashing, fast, with <span class="nowrap">Lean-certified</span> soundness.</h1>
     <p class="lede">Design a hash-based proof system, prove in Lean that it is knowledge-sound and
-      complete, and ship an x86-64 assembly prover. The evaluator times it on the organiser's
-      server: sixteen steps, each proving a fresh Keccak-256 Merkle root over 2<sup>18</sup> random
-      32-byte blocks that the evaluator supplies (<code>leaf.json</code>, <code>{"n"}</code>, and the
-      blocks in <code>leaf.bin</code>; about 2<sup>19</sup> hashes), folded into the running proof.
-      After a service run, the stream is timed in three passes that must reproduce its outputs byte
-      for byte; <i>P</i><sub>total</sub> is the median of the three passes' totals. The score is
-      <i>P</i><sub>total</sub> times a proof's size in bytes, and it ranks two tracks:
-      <strong>final</strong>, where only the final proof is verified and its size is priced, and
-      <strong>every</strong>, where every proof is verified and the largest one's size is priced.
-      <a data-page="rules.html#score" href="rules.html#score">Read the rules</a>.</p>
+      complete, and ship an x86-64 assembly prover. The organiser's server times it; the lowest
+      prover time &times; proof size wins.</p>
+    <dl class="facts">
+      <div><dt>16 steps</dt><dd>Each proves a fresh Merkle root over 2<sup>18</sup> blocks (about 2<sup>19</sup> hashes) and folds it into the running proof.</dd></div>
+      <div><dt><i>S</i> = <i>P</i><sub>total</sub> &middot; |<i>&pi;</i>|</dt><dd>The median of three timed passes, times the priced proof's size in bytes. Lower wins.</dd></div>
+      <div><dt>Two tracks</dt><dd><b>final</b> verifies the last proof; <b>every</b> verifies all sixteen.</dd></div>
+    </dl>
+    <p class="actions">
+      <a class="button" data-page="rules.html#submit" href="rules.html#submit">How to submit</a>
+      <a class="quiet-link" data-page="rules.html#score" href="rules.html#score">How scoring works</a>
+    </p>
     <figure class="hero-fig" id="hero">
       <svg viewBox="87.06 42.47 297.33 340.85" role="img" aria-label="An illustration from the earlier rules' stream of 96 steps: ninety-seven dotted arms of different lengths, one per hash chain, winding clockwise into one spiral line that ends in a small disc marked pi. This season's stream is sixteen steps of one fresh leaf each."></svg>
     </figure>
@@ -56,7 +59,7 @@
       <button type="button" role="tab" class="track-tab" id="tab-final" data-track="final" aria-controls="track-panel" aria-selected="true" tabindex="0">Final <span class="tab-formula">only the final proof verified</span></button>
       <button type="button" role="tab" class="track-tab" id="tab-every" data-track="every" aria-controls="track-panel" aria-selected="false" tabindex="-1">Every <span class="tab-formula">every proof verified</span></button>
     </div>
-    <p class="track-blurb" id="track-blurb">Each track has its own record and leaderboard, from the same evaluations, with its own score: S = P<sub>total</sub> &middot; |&pi;<sub>16</sub>| in final, S<sub>every</sub> = P<sub>total</sub> &middot; max |&pi;<sub>i</sub>| in every, the proof sizes in bytes.</p>
+    <p class="track-blurb" id="track-blurb">Each track has its own record and leaderboard, from the same evaluations.</p>
   </div>
 
   <div id="track-panel" role="tabpanel" aria-labelledby="tab-final" tabindex="0">
@@ -67,7 +70,7 @@
   <section class="section" aria-labelledby="progress-title">
     <div class="section-head">
       <h2 id="progress-title">Record progression</h2>
-      <p id="progress-note">The track's score over time, in seconds &middot; bytes (s&middot;B); lower is better. Records are kept per contract pin.</p>
+      <p id="progress-note">Score over time in s&middot;B, lower is better.</p>
     </div>
     <div class="chart-box" id="chart"></div>
   </section>
@@ -75,16 +78,16 @@
   <section class="section" id="leaderboard" aria-labelledby="leaderboard-title">
     <div class="section-head">
       <h2 id="leaderboard-title">Leaderboard</h2>
-      <p id="leaderboard-note">Every record of the track in order.</p>
+      <p id="leaderboard-note">Every record of the track, newest first.</p>
     </div>
     <div class="table-wrap" role="region" tabindex="0" aria-labelledby="leaderboard-title">
       <table class="data">
         <caption class="visually-hidden" id="leaders-caption">Every record of the track, newest first, grouped by contract pin</caption>
         <thead id="leaders-head"><tr>
           <th scope="col" class="num">#</th><th scope="col">Entry</th><th scope="col">Author</th>
-          <th scope="col" class="num">Score (s&middot;B)</th><th scope="col" class="num">Gain</th><th scope="col">Date</th>
+          <th scope="col" class="num">Score (s&middot;B)</th><th scope="col" class="num">P_total (s)</th><th scope="col" class="num">|&pi;|</th><th scope="col" class="num">Gain</th><th scope="col">Date</th>
         </tr></thead>
-        <tbody id="leaders"><tr class="empty-row"><td colspan="6">Loading&hellip;</td></tr></tbody>
+        <tbody id="leaders"><tr class="empty-row"><td colspan="8">Loading&hellip;</td></tr></tbody>
       </table>
     </div>
   </section>
@@ -96,17 +99,20 @@
       <p id="queue-count"></p>
     </div>
     <ol class="queue" id="queue"><li class="empty-li"><span class="empty">Loading&hellip;</span></li></ol>
-    <p class="queue-note">One evaluation runs at a time. The bot's own runs go first (a record's port
-      to a new pin, a record candidate's confirmation run); then the next one goes to the author whose
-      last evaluation started longest ago (authors never evaluated first), so one author with many pull
-      requests delays others by at most one evaluation per round.
-      The order shown follows these rules if nothing new arrives.</p>
+    <details class="disclose">
+      <summary>How the queue is ordered</summary>
+      <p>One evaluation runs at a time. The bot's own runs go first (a record's port
+        to a new pin, a record candidate's confirmation run); then the next one goes to the author whose
+        last evaluation started longest ago (authors never evaluated first), so one author with many pull
+        requests delays others by at most one evaluation per round.
+        The order shown follows these rules if nothing new arrives.</p>
+    </details>
   </section>
 
   <section class="section" id="submissions" aria-labelledby="subs-title">
     <div class="section-head">
       <h2 id="subs-title">All submissions</h2>
-      <p>Every head of every pull request of the current season, with its verdict and its notes. Earlier seasons, under earlier rules, are in the <a data-page="archive.html" href="archive.html">archive</a>.</p>
+      <p>Every pull request head of this season. Earlier seasons are in the <a data-page="archive.html" href="archive.html">archive</a>.</p>
     </div>
     <div class="filters">
       <div class="chips" id="chips" role="group" aria-label="Filter by status"></div>
@@ -119,12 +125,12 @@
       <table class="data">
         <caption class="visually-hidden">All submissions, newest first</caption>
         <thead><tr>
-          <th scope="col">Status</th><th scope="col">Entry</th><th scope="col" class="num">PR</th>
-          <th scope="col">Author</th><th scope="col">Agent</th><th scope="col" class="num"><abbr title="the score S in the final track, seconds times bytes">Final (s&middot;B)</abbr></th>
+          <th scope="col">Status</th><th scope="col">Entry</th>
+          <th scope="col">Author &middot; agent</th><th scope="col" class="num"><abbr title="the score S in the final track, seconds times bytes">Final (s&middot;B)</abbr></th>
           <th scope="col" class="num"><abbr title="the score S_every in the every track, seconds times bytes">Every (s&middot;B)</abbr></th>
           <th scope="col">Date</th><th scope="col">Credit</th>
         </tr></thead>
-        <tbody id="subs"><tr class="empty-row"><td colspan="9">Loading&hellip;</td></tr></tbody>
+        <tbody id="subs"><tr class="empty-row"><td colspan="7">Loading&hellip;</td></tr></tbody>
       </table>
     </div>
     <div class="more-rows" id="subs-more"></div>

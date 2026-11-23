@@ -12,9 +12,9 @@
 .hero-fig .core text { fill: var(--page); font: italic 15px var(--math); }
 
 @media (min-width: 900px) {
-  .hero { display: grid; grid-template-columns: minmax(0, 1fr) 320px; grid-template-rows: auto 1fr; column-gap: 56px; align-items: start; }
+  .hero { display: grid; grid-template-columns: minmax(0, 1fr) 300px; column-gap: 64px; align-items: start; }
   .hero > * { grid-column: 1; }
-  .hero > .hero-fig { grid-column: 2; grid-row: 1 / span 2; margin: 4px 0 0; }
+  .hero > .hero-fig { grid-column: 2; grid-row: 1 / span 4; align-self: center; margin: 0; }
 }
 
 /* one fold on load: the spiral draws clockwise, each chain swings onto it at its step, the core lands last */
@@ -31,4 +31,7 @@
   .hero-fig .core circle { fill: CanvasText; }
   .hero-fig .core text { fill: Canvas; }
   .hero-fig .arms path { stroke: GrayText; }
+}
+@media (max-width: 760px) {
+  .hero-fig svg { max-width: 220px; }
 }

@@ -46,14 +46,14 @@
       desc: Object.freeze({ P_total_s: P_DESC, final_pi_bytes: 'the final proof, in bytes' }),
       size: ['final_pi_bytes', '|\u03c0\u2081\u2086|'],
       note: 'Seconds \u00b7 bytes: the median of three timed passes\' totals over the 16 steps, times the final proof\'s size in bytes. Lower is better.',
-      blurb: 'Only the final proof is verified (at most 512 KiB, checked in at most 64 ms); each intermediate output need only fit in 1 MiB. S: the median of three timed passes\' total time over the 16 steps, in seconds, times the final proof\'s size in bytes.' }),
+      blurb: 'Only the final proof is verified (\u2264 512 KiB, checked in \u2264 64 ms). S = prover time \u00d7 the final proof\'s bytes.' }),
     Object.freeze({ id: 'every', label: 'Every', sym: 'S_every', field: null, unit: UNIT, factor: 'size_factor_every',
       formula: 'S_every = P_total \u00b7 max |\u03c0\u1d62|',
       parts: Object.freeze([['P_total_s', 'P_total', 's'], ['max_pi_bytes', 'max |\u03c0\u1d62|', 'B']]),
       desc: Object.freeze({ P_total_s: P_DESC, max_pi_bytes: 'the largest proof, in bytes' }),
       size: ['max_pi_bytes', 'max |\u03c0\u1d62|'],
       note: 'Seconds \u00b7 bytes: the median of three timed passes\' totals over the 16 steps, times the largest proof\'s size in bytes. Lower is better.',
-      blurb: 'Every proof is verified: each intermediate proof too is accepted against its statement (at most 1 MiB, checked in at most 64 ms). S_every: the same P_total, times the size in bytes of the largest of the 16 proofs.' })
+      blurb: 'Every one of the 16 proofs is verified (each \u2264 1 MiB, checked in \u2264 64 ms). S_every = prover time \u00d7 the largest proof\'s bytes.' })
   ]);
   const TRACK_IDS = TRACKS.map(t => t.id);
   const trackOf = id => TRACKS.find(t => t.id === id) || TRACKS[0];
@@ -453,6 +453,34 @@
     const [label, desc] = STATUS_INFO[status] || [status, ''];
     return el('span', { class: 'badge st-' + status, title: desc }, label);
   }
+  // A result's score in a track as a displayed equation: the track's formula, then the values of its
+  // factors (this season: P_total and the priced proof's size; an earlier v6 season's: P_total and the
+  // size factor, with the proof size beside it), and an optional tag such as the track's name.
+  // A symbol as math: italic, with `_suffix` (`P_total`, `S_every`) and Unicode subscripts (`π₁₆`,
+  // `πᵢ`) set as <sub> in the text's own digits and letters, which the vendored subsets cover.
+  const SUBS = { '₀': '0', '₁': '1', '₂': '2', '₃': '3', '₄': '4', '₅': '5', '₆': '6', '₇': '7', '₈': '8', '₉': '9', 'ᵢ': 'i' };
+  function mathText(s) {
+    const str = String(s), kids = [];
+    let at = 0;
+    for (const m of str.matchAll(/_([A-Za-z0-9]+)|([₀-₉ᵢ]+)/g)) {
+      kids.push(str.slice(at, m.index), el('sub', null, m[1] || [...m[2]].map(c => SUBS[c]).join('')));
+      at = m.index + m[0].length;
+    }
+    kids.push(str.slice(at));
+    return el('span', { class: 'math' }, kids);
+  }
+  // A result's score in a track as a displayed equation: the track's formula, then the values of its
+  // factors (this season: P_total and the priced proof's size; an earlier v6 season's: P_total and the
+  // size factor, with the proof size beside it), and an optional tag such as the track's name. Each
+  // operator stays on the line of the value after it.
+  function equation(pt, sc, tag) {
+    const val = ([k, , unit]) => unit === 's' ? (Number.isFinite(sc[k]) ? fmtS(sc[k]) + ' s' : '–') : fmtPart(sc[k], unit);
+    const mult = pt.old ? pt.parts.slice(0, 2) : pt.parts;
+    return el('p', { class: 'equation' }, mathText(pt.formula),
+      mult.map((p, i) => el('span', { class: 'term' }, (i ? '×' : '=') + ' ' + val(p))),
+      pt.old ? el('span', { class: 'muted' }, '(', mathText(pt.size[1]), ` = ${fmtBytes(sc[pt.size[0]])})`) : null,
+      tag ? el('span', { class: 'eq-tag' }, '(' + tag + ')') : null);
+  }
   const shortSha = s => s ? s.slice(0, 7) : '';
   const noRecords = () => Object.fromEntries(TRACK_IDS.map(t => [t, null]));
   // The gain 1 - S/S_record against the track's standing record, in percent (positive = faster), or null.
@@ -594,7 +622,7 @@
 
   window.RF = {
     CFG, BASE, dataKey, STATUSES, STATUS_INFO, RE, TRACKS, TRACK_IDS, trackOf, pricedBy, productRule, UNIT, unitNode, partsIn, scoreIn, retiredIn, chosenTrack, rememberTrack,
-    loadData, loadText, el, svg, ext, page, link, fmtS, fmtPart, fmtBytes, fmtDate, fmtDateTime, timeEl, ago, badge,
+    loadData, loadText, el, svg, ext, page, link, fmtS, fmtPart, fmtBytes, fmtDate, fmtDateTime, timeEl, ago, badge, equation, mathText,
     shortSha, gainOf, marginText, pct, unverified, evaluatedAt, relations, records, nameOf, section, chrome, footer
   };
   document.addEventListener('DOMContentLoaded', chrome);
