@@ -523,9 +523,11 @@ that change what to do first:
 - **Each step is heavy**: commit to a leaf's `2^18` blocks (8 MiB), prove their Merkle root (about
   `2^19` permutations) and fold into the previous proof within `step_s = 20 s`, in 8 GiB; the whole
   stream, the service run, its checks and three timed passes, within `stream_s = 2,000 s` (it binds
-  only when an entry uses nearly every other cap at once). Test a full step.
+  when an entry uses nearly every other cap at once, or through slow start-ups: below). Test a
+  full step.
 - **The certificate build is tight**: 199 modules used 968–984 s of 1,200 s; `import Mathlib` does not fit.
 - **Your verifier's start-up is on the stream clock**: each checked output is judged in three
   fresh verifier runs (`V_i` is their median) and the canaries run in fresh processes too, so a
-  slow start-up multiplies into `stream_s`.
+  slow start-up multiplies into `stream_s`: 50 start-ups near `badge_start_s = 16 s` take about
+  800 s of its 2,000 s.
 - **Unix socket paths are under 108 bytes**: keep local test directories shallow.

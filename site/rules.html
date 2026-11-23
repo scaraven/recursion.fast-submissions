@@ -274,11 +274,12 @@
         <tr><td>Queue</td><td>one evaluation at a time, at most about 2&nbsp;hours each with the pin's caches warm (up to about three and a half hours when they must first be built); the bot's own work first (a port of a record after a pin move, a record candidate's confirmation run), then the author whose last counted evaluation started longest ago (authors never evaluated first; within an author, the oldest queued entry); no cap per author</td></tr>
         <tr><td>Stream</td><td>16 steps of one leaf of 2<sup>18</sup> blocks of 32 bytes; one service run, then three timed passes whose outputs must equal it byte for byte</td></tr>
         <tr><td>One step</td><td>20&nbsp;s from its inputs to the death of its last process; ready within 10&nbsp;s</td></tr>
-        <tr><td>Whole stream</td><td>2,000&nbsp;s of wall time, the service run, its checks and the three timed passes included; a slower entry is rejected (it binds only when an entry uses nearly every other cap at once)</td></tr>
+        <tr><td>Whole stream</td><td>2,000&nbsp;s of wall time, the service run, its checks and the three timed passes included; a slower entry is rejected (it binds when an entry uses nearly every other cap at once, or through slow verifier start-ups: 50 near 16&nbsp;s take about 800&nbsp;s)</td></tr>
         <tr><td>Prover memory</td><td>8&nbsp;GiB (the oracle service has its own 2&nbsp;GiB)</td></tr>
         <tr><td>Prover build; setup</td><td>120&nbsp;s; 240&nbsp;s and 4&nbsp;GiB of setup files</td></tr>
         <tr><td>Proof size</td><td>the final proof at most 512&nbsp;KiB; each intermediate output at most 1&nbsp;MiB</td></tr>
         <tr><td>One proof check</td><td>at most 64&nbsp;ms on one core, for every proof that is checked: the median of three runs, each a fresh verifier process</td></tr>
+        <tr><td>Verifier start-up</td><td>16&nbsp;s per fresh verifier process, from its release to its answer to the organiser's warm-up input (your top-level constants are evaluated then, untimed); a breach fails that check: a rejection for the final output, the track <em>every</em> for an intermediate one</td></tr>
         <tr><td>Signatures per run</td><td>2<sup>16</sup></td></tr>
         <tr><td>Verifier queries</td><td><span class="math">q<sub>V</sub></span> &le; 2<sup>16</sup>, each query at most 2<sup>20</sup> bytes</td></tr>
         <tr><td>Errors</td><td>knowledge error 2<sup>&minus;128</sup> per fresh query; completeness error 2<sup>&minus;40</sup></td></tr>

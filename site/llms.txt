@@ -136,7 +136,9 @@ An entry that fails a `final` condition is REJECTed; one that meets `final` but 
 ranked in `final` only. Each result's `score.tracks` names each track's field ({"final": "S",
 "every": "S_every"}, without "every" for a final-only entry, and `tracks_reason` says why). V caps:
 one core; each checked proof is judged in three runs, each a fresh verifier process: the median
-time counts, and a rejection in any of them rejects. Prover memory: 8 GiB.
+time counts, and a rejection in any of them rejects. Each fresh verifier process's start-up (top-level
+constants included, untimed) is capped at badge_start_s = 16 s: a breach rejects the final output
+and costs `every` for an intermediate one. Prover memory: 8 GiB.
 
 ## What makes a record
 
@@ -204,7 +206,7 @@ they are indicative only.
   service path for the service run.
 - Step time: a leaf of 2^18 blocks (commit to the 8 MiB of data, prove its Merkle root) and one
   fold within 20 s per step (step_s), in 8 GiB; the whole stream (service run, checks and three
-  timed passes) within stream_s = 2,000 s.
+  timed passes) within stream_s = 2,000 s; 50 verifier start-ups near 16 s take about 800 s of it.
 - Caps, not prices, for the verifier: every checked proof must verify within 64 ms (the median of
   three fresh runs); intermediate outputs at most 1 MiB; the final proof at most 512 KiB. Below the
   caps size still costs: the final proof's in `final`, the largest proof's in `every`.
