@@ -445,7 +445,7 @@ class Queue(unittest.TestCase):
         """`tracks` and the fields it names survive the sanitiser whatever the number and order of the
         other keys: 60 filler keys in front, and a v6 score (core_score.json: S, P_total_s,
         size_factor, final_pi_bytes, S_every, size_factor_every, max_pi_bytes, pass_totals_s,
-        median_pass, tracks and diagnostics at M = 16, n = 2^18, the size factors the proof sizes
+        median_pass, tracks and diagnostics at M = 16, n = 2^17, the size factors the proof sizes
         in bytes, made-up numbers;
         replace it with the core's mock smoke once the core computes this score)."""
         from decide import clean_score

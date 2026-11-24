@@ -18,7 +18,7 @@
   "every": "S_every"
  },
  "M": 16,
- "sum_n": 4194304,
+ "sum_n": 2097152,
  "c_P": 1.0031,
  "c_P_provisional": false,
  "P_total_service_run_s": 16.78752
