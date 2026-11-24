@@ -1,0 +1,19 @@
+# lvm6's own crate (not leanVM's): FORMAT6.md's oracle, hash-chain transcript, Merkle commitments with caps, frozen
+# parameters (params6.json) and the schedule's counts. Std-only; leanVM's `keccak256` and `parallel` underneath.
+[package]
+name = "fs6"
+version.workspace = true
+edition.workspace = true
+publish = false
+license = "MIT OR Apache-2.0"
+
+[lints]
+workspace = true
+
+[dependencies]
+keccak256.workspace = true
+parallel = { package = "experimental_parallel", path = "../parallel" }
+
+[features]
+# R9: build for the shape `P17` (n = 2^17) instead of `P18` (`params::SHAPE`).
+p17 = []
