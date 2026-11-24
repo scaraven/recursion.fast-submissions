@@ -1,0 +1,24 @@
+# lvm6 WP R3 (not leanVM): FORMAT6 v2.4 §6.4b: the mini-bus at E (leanVM experimental lean_vm_core gkr.rs/leaf.rs vendored at F128, season 1 m3::prove_lin and typed_mb ported).
+# The verifier side (formerly feature `verify`) is refv's `sponge`/`typed`/`minibus` modules (R1, one verifier).
+[package]
+name = "r3mb"
+version.workspace = true
+edition.workspace = true
+publish = false
+license = "MIT OR Apache-2.0"
+
+[lints]
+workspace = true
+
+[dependencies]
+r3core = { path = "../r3core" }
+r3typed = { path = "../r3typed" }
+parallel = { package = "experimental_parallel", path = "../parallel" }
+primitives = { package = "experimental_primitives", path = "../primitives" }
+fiat_shamir = { package = "fiat_shamir_prover", path = "../fiat_shamir_prover" }
+fs6 = { path = "../fs6" }
+verifier.workspace = true
+tracing.workspace = true
+
+[features]
+

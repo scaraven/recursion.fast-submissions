@@ -1,0 +1,19 @@
+# lvm6 WP R3 (not leanVM): the stack layout shared by the R3 parts, the prover-side stack claim, and FORMAT6
+# §6.5–§6.6 (ring switching, the λ₀ batch of the 53 stack claims, the WHIR opening) on the v6 transcript.
+[package]
+name = "r3core"
+version.workspace = true
+edition.workspace = true
+publish = false
+license = "MIT OR Apache-2.0"
+
+[lints]
+workspace = true
+
+[dependencies]
+parallel = { package = "experimental_parallel", path = "../parallel" }
+primitives = { package = "experimental_primitives", path = "../primitives" }
+pcs = { package = "experimental_pcs", path = "../pcs" }
+fiat_shamir = { package = "fiat_shamir_prover", path = "../fiat_shamir_prover" }
+fs6 = { path = "../fs6" }
+verifier.workspace = true
