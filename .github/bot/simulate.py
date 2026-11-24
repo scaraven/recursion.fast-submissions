@@ -163,7 +163,7 @@ def make_result(run_id, verdict="ACCEPT", S=1.0, comparable=True, harness=PIN, p
     r = {"schema": "recursion.fast/v6/result-1", "verdict": verdict, "comparable": comparable,
          "truncated": not comparable and machine_ok, "harness_commit": harness, "job": f"{REPO}/actions/runs/{run_id}/attempts/1",
          "machine": {"fingerprint": fp if machine_ok else "e" * 64, "expected": fp, "matches": machine_ok and stream},
-         "stream": {"shape": {"M": 16, "n": 1 << 18}, "leaf_data": {"xof": "shake256", "domain": "recursion.fast/leaf-data/v1"},
+         "stream": {"shape": {"M": 16, "n": 1 << 17}, "leaf_data": {"xof": "shake256", "domain": "recursion.fast/leaf-data/v1"},
                     "truncated": not comparable and machine_ok} if stream else None,
          "runner": {"name": "rf-bench-1", "environment": "self-hosted", "labels": ["rf-bench"]},
          "reasons": ([] if verdict == "ACCEPT" else ["the entry failed: `boom` @someone"] if machine_ok else
@@ -184,7 +184,7 @@ def make_result(run_id, verdict="ACCEPT", S=1.0, comparable=True, harness=PIN, p
         else:
             r["score"] = {"S": S, "P_total_s": P, "size_factor": f, "final_pi_bytes": pi,
                           "pass_totals_s": [P * 1.004, P, P * 0.998], "median_pass": 2,
-                          "M": 16, "sum_n": 16 << 18, "c_P": 1.0,
+                          "M": 16, "sum_n": 16 << 17, "c_P": 1.0,
                           "tracks": {"final": "S", "every": "S_every"} if every else {"final": "S"}}
             if every:
                 r["score"].update(S_every=P * fe, size_factor_every=fe, max_pi_bytes=pi_max)

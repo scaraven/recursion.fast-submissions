@@ -145,7 +145,7 @@
     ],
     "median_pass": 2,
     "M": 16,
-    "sum_n": 4194304,
+    "sum_n": 2097152,
     "c_P": 1.031,
     "tracks": {
      "final": "S",
@@ -203,7 +203,7 @@
      ],
      "median_pass": 2,
      "M": 16,
-     "sum_n": 4194304,
+     "sum_n": 2097152,
      "c_P": 1.031,
      "tracks": {
       "final": "S",
@@ -225,7 +225,7 @@
      ],
      "median_pass": 2,
      "M": 16,
-     "sum_n": 4194304,
+     "sum_n": 2097152,
      "c_P": 1.031,
      "tracks": {
       "final": "S",
@@ -312,7 +312,7 @@
     ],
     "median_pass": 2,
     "M": 16,
-    "sum_n": 4194304,
+    "sum_n": 2097152,
     "c_P": 1.031,
     "tracks": {
      "final": "S",
@@ -382,7 +382,7 @@
      ],
      "median_pass": 2,
      "M": 16,
-     "sum_n": 4194304,
+     "sum_n": 2097152,
      "c_P": 1.031,
      "tracks": {
       "final": "S",
@@ -404,7 +404,7 @@
      ],
      "median_pass": 2,
      "M": 16,
-     "sum_n": 4194304,
+     "sum_n": 2097152,
      "c_P": 1.031,
      "tracks": {
       "final": "S",
@@ -451,7 +451,7 @@
     ],
     "median_pass": 2,
     "M": 16,
-    "sum_n": 4194304,
+    "sum_n": 2097152,
     "c_P": 1.031,
     "tracks": {
      "final": "S",
@@ -522,7 +522,7 @@
     ],
     "median_pass": 2,
     "M": 16,
-    "sum_n": 4194304,
+    "sum_n": 2097152,
     "c_P": 1.031,
     "tracks": {
      "final": "S",
@@ -586,7 +586,7 @@
     ],
     "median_pass": 2,
     "M": 16,
-    "sum_n": 4194304,
+    "sum_n": 2097152,
     "c_P": 1.031,
     "tracks_reason": {
      "every": "output 2 rejected by acc"
@@ -648,7 +648,7 @@
      ],
      "median_pass": 2,
      "M": 16,
-     "sum_n": 4194304,
+     "sum_n": 2097152,
      "c_P": 1.031,
      "tracks_reason": {
       "every": "output 2 rejected by acc"
@@ -669,7 +669,7 @@
      ],
      "median_pass": 2,
      "M": 16,
-     "sum_n": 4194304,
+     "sum_n": 2097152,
      "c_P": 1.031,
      "tracks_reason": {
       "every": "output 2 rejected by acc"
@@ -716,7 +716,7 @@
     ],
     "median_pass": 2,
     "M": 16,
-    "sum_n": 4194304,
+    "sum_n": 2097152,
     "c_P": 1.031,
     "tracks": {
      "final": "S",
@@ -786,7 +786,7 @@
      ],
      "median_pass": 2,
      "M": 16,
-     "sum_n": 4194304,
+     "sum_n": 2097152,
      "c_P": 1.031,
      "tracks": {
       "final": "S",
@@ -808,7 +808,7 @@
      ],
      "median_pass": 2,
      "M": 16,
-     "sum_n": 4194304,
+     "sum_n": 2097152,
      "c_P": 1.031,
      "tracks": {
       "final": "S",
@@ -852,7 +852,7 @@
     ],
     "median_pass": 2,
     "M": 16,
-    "sum_n": 4194304,
+    "sum_n": 2097152,
     "c_P": 1.031,
     "tracks": {
      "final": "S",
@@ -917,7 +917,7 @@
     ],
     "median_pass": 2,
     "M": 16,
-    "sum_n": 4194304,
+    "sum_n": 2097152,
     "c_P": 1.031,
     "tracks": {
      "final": "S",
@@ -1025,7 +1025,7 @@
     ],
     "median_pass": 2,
     "M": 16,
-    "sum_n": 4194304,
+    "sum_n": 2097152,
     "c_P": 1.031,
     "tracks": {
      "final": "S",
@@ -1047,7 +1047,7 @@
       ],
       "median_pass": 2,
       "M": 16,
-      "sum_n": 4194304,
+      "sum_n": 2097152,
       "c_P": 1.031
      }
     }
@@ -1119,7 +1119,7 @@
      ],
      "median_pass": 2,
      "M": 16,
-     "sum_n": 4194304,
+     "sum_n": 2097152,
      "c_P": 1.031,
      "tracks": {
       "final": "S",
@@ -1141,7 +1141,7 @@
      ],
      "median_pass": 2,
      "M": 16,
-     "sum_n": 4194304,
+     "sum_n": 2097152,
      "c_P": 1.031,
      "tracks": {
       "final": "S",
@@ -1183,7 +1183,7 @@
     ],
     "median_pass": 2,
     "M": 16,
-    "sum_n": 4194304,
+    "sum_n": 2097152,
     "c_P": 1.031,
     "tracks": {
      "final": "S",
@@ -1384,7 +1384,7 @@
     ],
     "median_pass": 2,
     "M": 16,
-    "sum_n": 4194304,
+    "sum_n": 2097152,
     "c_P": 1.031,
     "tracks_reason": {
      "every": "output 2 rejected by acc"
@@ -1446,7 +1446,7 @@
      ],
      "median_pass": 2,
      "M": 16,
-     "sum_n": 4194304,
+     "sum_n": 2097152,
      "c_P": 1.031,
      "tracks_reason": {
       "every": "output 2 rejected by acc"
@@ -1467,7 +1467,7 @@
      ],
      "median_pass": 2,
      "M": 16,
-     "sum_n": 4194304,
+     "sum_n": 2097152,
      "c_P": 1.031,
      "tracks_reason": {
       "every": "output 2 rejected by acc"
