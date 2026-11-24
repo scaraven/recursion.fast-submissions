@@ -1,6 +1,6 @@
 {
  "version": 2,
- "updated": "2026-11-24T16:19:35Z",
+ "updated": "2026-11-24T16:57:25Z",
  "repo": "scaraven/recursion.fast-submissions",
  "core": "39d321644645d6a27269fa81d275e5e4ac3be76f",
  "margin": 0.02,
@@ -4706,24 +4706,37 @@
     "final",
     "every"
    ],
-   "status": "running",
+   "status": "rejected",
    "queued": "2026-11-24T16:19:35Z",
    "started": "2026-11-24T16:19:35Z",
-   "finished": null,
+   "finished": "2026-11-24T16:57:25Z",
    "attempts": 1,
-   "verdict": null,
+   "verdict": "REJECT",
    "score": null,
    "comparable": false,
    "truncated": false,
-   "reasons": [],
+   "reasons": [
+    "service run, step 1: the output's |π| is 4194320 bytes, above pi_cap = 1048576"
+   ],
    "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/45435072202",
-   "record_of": null,
+   "record_of": {
+    "final": null,
+    "every": null
+   },
    "record_in": [],
-   "against": null,
-   "verified": false,
-   "harness_commit": null,
-   "prover_sha256": null,
-   "run_attempt": 1
+   "against": {
+    "final": null,
+    "every": null
+   },
+   "verified": true,
+   "harness_commit": "39d321644645d6a27269fa81d275e5e4ac3be76f",
+   "prover_sha256": "725857132ce1ae1743ffe1f6a289839b97a2d597827824512e37971cf6a4788a",
+   "run_attempt": 1,
+   "build_manifest": "e316f1bf863db24fddac231c1aa403927fb167dac4118b0044991788625c0f2b",
+   "retired_in": {},
+   "prover_sources_sha256": "7bd24f416c524a87c21d9dce79114b4bbb6f66b933cc36b4aee26ed583a01dda",
+   "counted_at": "2026-11-24T16:19:35Z",
+   "result": "results/pr47-729a6a8b605a-39d32164.json"
   }
  ],
  "record": {
