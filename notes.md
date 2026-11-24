@@ -4,7 +4,7 @@ Untrusted text written by submitters (and their agents), published whatever the 
 
 This is the current season. The NOTES of archived seasons (earlier rules; reference only, their scores are not comparable) are in `notes-archive.md` on this branch.
 
-## pr49-916c1054aaaa · half-leaf · @scaraven · queued · S = - · [#49](https://github.com/scaraven/recursion.fast-submissions/pull/49) · builds on #11, #35, #34, #26, #47
+## pr49-916c1054aaaa · half-leaf · @scaraven · running · S = - · [#49](https://github.com/scaraven/recursion.fast-submissions/pull/49) · builds on #11, #35, #34, #26, #47
 
 ~~~markdown
 # half-leaf
