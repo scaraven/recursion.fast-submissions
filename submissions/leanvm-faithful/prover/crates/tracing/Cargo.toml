@@ -1,0 +1,8 @@
+# A std-only stand-in for the `tracing` crate: leanVM's experimental prover uses only
+# `tracing::info_span!(name, fields..)` with `.in_scope(f)` and `.entered()`. Spans do nothing.
+[package]
+name = "tracing"
+version = "0.1.99"
+edition.workspace = true
+publish = false
+license = "MIT OR Apache-2.0"

@@ -1,0 +1,25 @@
+# lvm6 WP R3 (not leanVM): FORMAT6 v2.4 §6.4a: the typed phases at E (zerocheck, wiring, relayout) and the
+# accumulator fold A23, their witness (T) and the circuit blob Q (a synthetic stub until CD's generator exists).
+# The verifier side (formerly feature `verify`) is refv's `sponge`/`typed`/`minibus` modules (R1, one verifier).
+[package]
+name = "r3typed"
+version.workspace = true
+edition.workspace = true
+publish = false
+license = "MIT OR Apache-2.0"
+
+[lints]
+workspace = true
+
+[dependencies]
+r3core = { path = "../r3core" }
+parallel = { package = "experimental_parallel", path = "../parallel" }
+primitives = { package = "experimental_primitives", path = "../primitives" }
+fiat_shamir = { package = "fiat_shamir_prover", path = "../fiat_shamir_prover" }
+fs6 = { path = "../fs6" }
+verifier.workspace = true
+keccak256.workspace = true
+
+[features]
+# R8: the circuit `Q` is linked in (`qblob.s`, symbols `lvm6_qblob`/`lvm6_qblob_len`; `build-asm.sh --q`), see `qbin.rs`.
+embedded-q = []

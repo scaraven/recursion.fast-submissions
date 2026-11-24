@@ -1,0 +1,10 @@
+[package]
+name = "experimental_parallel"
+version.workspace = true
+edition.workspace = true
+publish = false
+license = "MIT OR Apache-2.0"
+description = "Fixed-size heterogeneous thread pool for flat data-parallel kernels (vendored from leanVM fdb317982)"
+
+[lints]
+workspace = true

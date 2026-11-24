@@ -1,0 +1,21 @@
+[package]
+name = "experimental_keccak_gkr"
+version.workspace = true
+edition.workspace = true
+publish = false
+license = "MIT OR Apache-2.0"
+
+[lints]
+workspace = true
+
+[dependencies]
+parallel = { package = "experimental_parallel", path = "../parallel" }
+primitives = { package = "experimental_primitives", path = "../primitives" }
+fiat_shamir = { package = "fiat_shamir_prover", path = "../fiat_shamir_prover" }
+pcs = { package = "experimental_pcs", path = "../pcs" }
+tracing.workspace = true
+verifier.workspace = true
+
+[features]
+# leanVM's standalone batch benchmark (bench_harness, isa); never enabled here.
+bench = []

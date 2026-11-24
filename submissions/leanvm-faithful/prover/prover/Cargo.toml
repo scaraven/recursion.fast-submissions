@@ -1,0 +1,37 @@
+# The v6 process binary (PROVER.md §3): `setup`, `first`, `step`, plus dev modes (`smoke`, `kat`, `info`).
+[package]
+name = "lvm6-prover"
+version.workspace = true
+edition.workspace = true
+publish = false
+license = "MIT OR Apache-2.0"
+autobins = false
+autotests = false
+autobenches = false
+autoexamples = false
+
+[[bin]]
+name = "lvm6-prover"
+path = "src/main.rs"
+
+[dependencies]
+parallel = { package = "experimental_parallel", path = "../crates/parallel" }
+primitives = { package = "experimental_primitives", path = "../crates/primitives" }
+pcs = { package = "experimental_pcs", path = "../crates/pcs" }
+keccak_gkr = { package = "experimental_keccak_gkr", path = "../crates/keccak_gkr" }
+fiat_shamir = { package = "fiat_shamir_prover", path = "../crates/fiat_shamir_prover" }
+fs6.workspace = true
+verifier.workspace = true
+keccak256.workspace = true
+# WP R3: the shared layout, stack claims and the §6.1/§6.5/§6.6 prover.
+r3core = { path = "../crates/r3core" }
+r3sponge = { path = "../crates/r3sponge" }
+r3typed = { path = "../crates/r3typed" }
+r3mb = { path = "../crates/r3mb" }
+
+[features]
+# R8: the shipped build: `Q` embedded (`build-asm.sh --q`, which links `qblob.s`).
+embedded-q = ["r3typed/embedded-q"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn" }

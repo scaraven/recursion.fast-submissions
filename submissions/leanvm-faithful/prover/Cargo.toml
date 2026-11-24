@@ -1,0 +1,49 @@
+# lvm6 prover workspace: leanVM fdb317982's experimental prover crates, vendored (copied with their
+# sources unchanged except as listed in PATCHES.md), and the v6 process binary `lvm6-prover`.
+# The submitted form is the generated `prover-*.s` (build-asm.sh); the build is offline, std-only.
+[workspace]
+members = [
+    "crates/parallel",
+    "crates/primitives",
+    "crates/pcs",
+    "crates/keccak_gkr",
+    "crates/verifier",
+    "crates/keccak256",
+    "crates/fiat_shamir_prover",
+    "crates/tracing",
+    "crates/fs6",
+    "prover",
+    "tools/refv",
+    # WP R3 (PATCHES.md): shared layout/claims/opening, the sponge batch, the typed phases, the dev verifier.
+    "crates/r3core",
+    "crates/r3sponge",
+    "crates/r3typed",
+    "crates/r3mb",
+    "tools/r3v",
+]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+
+[workspace.lints.clippy]
+needless_range_loop = "allow"
+too_many_arguments = "allow"
+
+[workspace.dependencies]
+verifier = { path = "crates/verifier" }
+keccak256 = { path = "crates/keccak256" }
+fiat_shamir_prover = { path = "crates/fiat_shamir_prover" }
+fs6 = { path = "crates/fs6" }
+# leanVM uses only `tracing::info_span!(..).in_scope/.entered`; a std-only shim (crates/tracing) keeps the
+# build offline and free of the tracing runtime.
+tracing = { path = "crates/tracing" }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+debug = false
+panic = "abort"
+incremental = false
