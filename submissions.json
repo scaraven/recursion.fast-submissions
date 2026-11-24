@@ -1,6 +1,6 @@
 {
  "version": 2,
- "updated": "2026-11-24T22:35:33Z",
+ "updated": "2026-11-24T23:10:54Z",
  "repo": "scaraven/recursion.fast-submissions",
  "core": "39d321644645d6a27269fa81d275e5e4ac3be76f",
  "margin": 0.02,
@@ -4757,24 +4757,107 @@
    "queued": "2026-11-24T22:34:35Z",
    "started": "2026-11-24T22:35:32Z",
    "finished": null,
-   "attempts": 1,
-   "status": "running",
-   "verdict": null,
-   "score": null,
-   "comparable": false,
+   "attempts": 0,
+   "status": "queued",
+   "verdict": "ACCEPT",
+   "score": {
+    "S": 9307844.84471963,
+    "P_total_s": 40.394424385999855,
+    "size_factor": 230424,
+    "final_pi_bytes": 230424,
+    "final_file_bytes": 754143,
+    "pass_totals_s": [
+     42.08133940399995,
+     40.394424385999855,
+     39.47919787799992
+    ],
+    "median_pass": 2,
+    "tracks": {
+     "final": "S",
+     "every": "S_every"
+    },
+    "S_every": 9307844.84471963,
+    "size_factor_every": 230424,
+    "max_pi_bytes": 230424,
+    "M": 16,
+    "sum_n": 2097152,
+    "c_P": 1.0124114342188488,
+    "c_P_provisional": false,
+    "P_total_service_run_s": 61.32317107499999
+   },
+   "comparable": true,
    "truncated": false,
-   "reasons": [],
+   "reasons": [
+    "final: no record stood in this track at the pin",
+    "every: no record stood in this track at the pin",
+    "a record candidate in final, every: queued for its confirmation run (this commit, once more at this pin); the record is taken only if that run also beats the standing record"
+   ],
    "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/45502338079",
    "tag": "rf-source/pr49-916c1054aaaa",
    "notes": "notes/pr49-916c1054aaaa.md",
    "readme": "readme/pr49-916c1054aaaa.md",
-   "record_of": null,
+   "record_of": {
+    "final": null,
+    "every": null
+   },
    "tree": "57df0deea7cf5e00b5bc0735ee96333c2e9565f4",
    "prover_tree": "2c5cd76683ee6c6974807967f42f978e21699f04",
-   "verified": false,
-   "harness_commit": null,
-   "prover_sha256": null,
-   "run_attempt": 1
+   "verified": true,
+   "harness_commit": "39d321644645d6a27269fa81d275e5e4ac3be76f",
+   "prover_sha256": "e72d01c49b255b8cdbf56148bac0b09530f686b3801381afbd359af7e9d7c068",
+   "run_attempt": 1,
+   "confirm": {
+    "pin": "39d321644645d6a27269fa81d275e5e4ac3be76f",
+    "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/45502338079",
+    "result": "results/pr49-916c1054aaaa.json",
+    "took": [
+     "final",
+     "every"
+    ],
+    "score": {
+     "S": 9307844.84471963,
+     "P_total_s": 40.394424385999855,
+     "size_factor": 230424,
+     "final_pi_bytes": 230424,
+     "final_file_bytes": 754143,
+     "pass_totals_s": [
+      42.08133940399995,
+      40.394424385999855,
+      39.47919787799992
+     ],
+     "median_pass": 2,
+     "tracks": {
+      "final": "S",
+      "every": "S_every"
+     },
+     "S_every": 9307844.84471963,
+     "size_factor_every": 230424,
+     "max_pi_bytes": 230424,
+     "M": 16,
+     "sum_n": 2097152,
+     "c_P": 1.0124114342188488,
+     "c_P_provisional": false,
+     "P_total_service_run_s": 61.32317107499999
+    },
+    "against": {
+     "final": null,
+     "every": null
+    },
+    "record_of": {
+     "final": null,
+     "every": null
+    }
+   },
+   "build_manifest": "cde18840713e54e56937d6d4654b91252181ec786c2053753bf917c6ed14f86b",
+   "against": {
+    "final": null,
+    "every": null
+   },
+   "record_in": [],
+   "retired_in": {},
+   "prover_sources_sha256": "0743b1af97d4ba528f760732c0652f427752d8e5a6f3d4686911dfa09fdc57de",
+   "counted_at": "2026-11-24T22:35:32Z",
+   "result": "results/pr49-916c1054aaaa.json"
   }
  ],
  "record": {
