@@ -85,13 +85,13 @@ the host CPU passed through: x86-64-v4 (AVX2, FMA, BMI1/2 and AVX-512 F, CD, BW,
 a `SIGILL` fails the run.
 
 **The stream** (§6) is 16 steps; each step gets one fresh leaf, `leaf.json` = `{"n"}` with
-`n = 2^18` and `leaf.bin`, exactly `32·n` bytes, the blocks `x_0 ‖ … ‖ x_(n−1)` (from step 2 also
+`n = 2^17` and `leaf.bin`, exactly `32·n` bytes, the blocks `x_0 ‖ … ‖ x_(n−1)` (from step 2 also
 `prev.stmt` and `prev.bin`), and outputs a proof of `c_1 = L_1`, `c_i = nodeStmt c_(i-1) L_i`. The
 leaf is `L_i = leafStmt (dataRoot xs_i) n`, the Keccak-256 Merkle root of the step's blocks:
 `leafItem x = Keccak-256(0x48 ‖ x)` per block, adjacent digests paired by
 `dataNode l r = Keccak-256(0x44 ‖ l ‖ r)` level by level (an odd last digest is carried up
-unhashed), one Keccak-f[1600] permutation each, about `2^19` per step. The verifier knows only the
-root, and a step's 8 MiB of data does not fit in a 1 MiB output, so the data must be committed in
+unhashed), one Keccak-f[1600] permutation each, about `2^18` per step. The verifier knows only the
+root, and a step's 4 MiB of data does not fit in a 1 MiB output, so the data must be committed in
 the proof. Completeness is asked for every `n ≤ leafCap = 2^20`, odd sizes included, although the
 benchmark uses one `n` (§3). Each leaf's data is a fresh secret draw in every evaluation (a secret
 seed expanded with SHAKE-256 and published after the run; the prover sees only `leaf.bin`). The
@@ -102,7 +102,7 @@ deterministic** (grinding included). One binary may branch on whether `/work/ora
 **A worked example.** The core ships a minimal entry: it is certified at errors 0 and is not
 competitive. A copy passes the certificate and runs through the benchmark at the smoke shape
 (`harness/smoke.toml`). At the season shape it is REJECTed at step 1 by the 1 MiB output cap: it
-sends the leaf's data as its proof, `16 + 2^23` bytes, before any verifier is timed. It shows the
+sends the leaf's data as its proof, `16 + 2^22` bytes, before any verifier is timed. It shows the
 layout, not a design. To copy it:
 
 ```sh
@@ -520,8 +520,8 @@ that change what to do first:
   core (the median of three fresh runs), and every output is at most 1 MiB; the final proof at most
   512 KiB. Below the caps size still costs: the final proof's in `final`, the largest proof's in
   `every`.
-- **Each step is heavy**: commit to a leaf's `2^18` blocks (8 MiB), prove their Merkle root (about
-  `2^19` permutations) and fold into the previous proof within `step_s = 20 s`, in 8 GiB; the whole
+- **Each step is heavy**: commit to a leaf's `2^17` blocks (4 MiB), prove their Merkle root (about
+  `2^18` permutations) and fold into the previous proof within `step_s = 20 s`, in 8 GiB; the whole
   stream, the service run, its checks and three timed passes, within `stream_s = 2,000 s` (it binds
   when an entry uses nearly every other cap at once, or through slow start-ups: below). Test a
   full step.

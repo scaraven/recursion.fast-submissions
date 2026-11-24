@@ -17,8 +17,8 @@ has a Lean half and an assembly half.
 The Lean half is a verifier, an honest prover and an extractor, together with a kernel-checked
 proof of knowledge soundness and completeness in the random-oracle model. The assembly half is a
 fast x86-64 prover. The benchmark runs incrementally verifiable computation on the organiser's
-server, one throwaway VM per job: 16 steps, each proving one fresh leaf of `n = 2^18` blocks that
-the evaluator supplies (`leaf.bin`, 8 MiB, about 2^19 Keccak-f[1600] permutations to hash) into
+server, one throwaway VM per job: 16 steps, each proving one fresh leaf of `n = 2^17` blocks that
+the evaluator supplies (`leaf.bin`, 4 MiB, about 2^18 Keccak-f[1600] permutations to hash) into
 one running proof; each leaf's data is a fresh secret draw. The stream runs once against the oracle
 service, then three times more timed, with the oracle's key given to the prover: the timed outputs
 must equal the service run's byte for byte, so provers are deterministic.
