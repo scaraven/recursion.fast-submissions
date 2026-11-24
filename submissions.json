@@ -1,6 +1,6 @@
 {
  "version": 2,
- "updated": "2026-11-24T11:03:04Z",
+ "updated": "2026-11-24T11:03:26Z",
  "repo": "scaraven/recursion.fast-submissions",
  "core": "b7aa87328c30a2824ed8728386238b752a7c1af4",
  "margin": 0.02,
@@ -4558,10 +4558,10 @@
    ],
    "opened": "2026-11-24T10:10:07Z",
    "queued": "2026-11-24T10:10:48Z",
-   "started": "2026-11-24T10:11:42Z",
+   "started": "2026-11-24T11:03:26Z",
    "finished": null,
-   "attempts": 0,
-   "status": "queued",
+   "attempts": 1,
+   "status": "running",
    "verdict": "ACCEPT",
    "score": {
     "S": 16944909.395715855,
@@ -4595,7 +4595,7 @@
     "every: no record stood in this track at the pin",
     "a record candidate in final, every: queued for its confirmation run (this commit, once more at this pin); the record is taken only if that run also beats the standing record"
    ],
-   "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/45372387372",
+   "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/45380561483",
    "tag": "rf-source/pr47-729a6a8b605a",
    "notes": "notes/pr47-729a6a8b605a.md",
    "readme": "readme/pr47-729a6a8b605a.md",
