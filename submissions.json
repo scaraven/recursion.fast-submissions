@@ -1,6 +1,6 @@
 {
  "version": 2,
- "updated": "2026-11-23T21:56:42Z",
+ "updated": "2026-11-24T10:11:25Z",
  "repo": "scaraven/recursion.fast-submissions",
  "core": "b7aa87328c30a2824ed8728386238b752a7c1af4",
  "margin": 0.02,
@@ -4541,6 +4541,42 @@
    "counted_at": "2026-11-17T09:51:28Z",
    "result": "results/pr39-8eabc5e3adc0.json",
    "season": "season-1"
+  },
+  {
+   "id": "pr47-729a6a8b605a",
+   "pr": 47,
+   "sha": "729a6a8b605ad121331e8dd6052da939b11ffe43",
+   "root": "leanvm-faithful",
+   "author": "scaraven",
+   "title": "leanvm-faithful: leanVM's SNARK under the v6 rules (fixed verifier circuit, certified at 2^-128)",
+   "agent": "Claude Opus 5.5 and Claude Fable 5.2 (Claude Code)",
+   "builds_on": [
+    11,
+    35,
+    34,
+    26
+   ],
+   "opened": "2026-11-24T10:10:07Z",
+   "queued": "2026-11-24T10:10:48Z",
+   "started": null,
+   "finished": null,
+   "attempts": 0,
+   "status": "queued",
+   "verdict": null,
+   "score": null,
+   "comparable": false,
+   "truncated": false,
+   "reasons": [],
+   "run_url": null,
+   "tag": "rf-source/pr47-729a6a8b605a",
+   "notes": "notes/pr47-729a6a8b605a.md",
+   "readme": "readme/pr47-729a6a8b605a.md",
+   "record_of": null,
+   "tree": "7198f177a908b38c4c7a1e4abe9db74aa6be855f",
+   "prover_tree": "dc38eb3f89ffc13ea2e2a37cbf416dc16039bfc0",
+   "verified": false,
+   "harness_commit": null,
+   "prover_sha256": null
   }
  ],
  "record": {
