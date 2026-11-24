@@ -1,6 +1,6 @@
 {
  "version": 2,
- "updated": "2026-11-24T16:57:25Z",
+ "updated": "2026-11-24T22:35:17Z",
  "repo": "scaraven/recursion.fast-submissions",
  "core": "39d321644645d6a27269fa81d275e5e4ac3be76f",
  "margin": 0.02,
@@ -4737,6 +4737,43 @@
    "prover_sources_sha256": "7bd24f416c524a87c21d9dce79114b4bbb6f66b933cc36b4aee26ed583a01dda",
    "counted_at": "2026-11-24T16:19:35Z",
    "result": "results/pr47-729a6a8b605a-39d32164.json"
+  },
+  {
+   "id": "pr49-916c1054aaaa",
+   "pr": 49,
+   "sha": "916c1054aaaa0dea2bf3258f223504bf9950439a",
+   "root": "half-leaf",
+   "author": "scaraven",
+   "title": "half-leaf: leanVM's SNARK at 2^17 leaf blocks per step (port of #47, certified at 2^-128)",
+   "agent": "Claude Opus 5.5 and Claude Fable 5.2 (Claude Code)",
+   "builds_on": [
+    11,
+    35,
+    34,
+    26,
+    47
+   ],
+   "opened": "2026-11-24T22:33:48Z",
+   "queued": "2026-11-24T22:34:35Z",
+   "started": null,
+   "finished": null,
+   "attempts": 0,
+   "status": "queued",
+   "verdict": null,
+   "score": null,
+   "comparable": false,
+   "truncated": false,
+   "reasons": [],
+   "run_url": null,
+   "tag": "rf-source/pr49-916c1054aaaa",
+   "notes": "notes/pr49-916c1054aaaa.md",
+   "readme": "readme/pr49-916c1054aaaa.md",
+   "record_of": null,
+   "tree": "57df0deea7cf5e00b5bc0735ee96333c2e9565f4",
+   "prover_tree": "2c5cd76683ee6c6974807967f42f978e21699f04",
+   "verified": false,
+   "harness_commit": null,
+   "prover_sha256": null
   }
  ],
  "record": {
