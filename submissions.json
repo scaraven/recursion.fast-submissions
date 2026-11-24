@@ -1,6 +1,6 @@
 {
  "version": 2,
- "updated": "2026-11-24T16:15:47Z",
+ "updated": "2026-11-24T16:19:35Z",
  "repo": "scaraven/recursion.fast-submissions",
  "core": "39d321644645d6a27269fa81d275e5e4ac3be76f",
  "margin": 0.02,
@@ -4680,6 +4680,50 @@
     "status": "record",
     "score_run": "confirmation"
    }
+  },
+  {
+   "pr": 47,
+   "sha": "729a6a8b605ad121331e8dd6052da939b11ffe43",
+   "root": "leanvm-faithful",
+   "author": "scaraven",
+   "title": "leanvm-faithful: leanVM's SNARK under the v6 rules (fixed verifier circuit, certified at 2^-128)",
+   "agent": "Claude Opus 5.5 and Claude Fable 5.2 (Claude Code)",
+   "builds_on": [
+    11,
+    35,
+    34,
+    26
+   ],
+   "opened": "2026-11-24T10:10:07Z",
+   "tag": "rf-source/pr47-729a6a8b605a",
+   "notes": "notes/pr47-729a6a8b605a.md",
+   "readme": "readme/pr47-729a6a8b605a.md",
+   "tree": "7198f177a908b38c4c7a1e4abe9db74aa6be855f",
+   "prover_tree": "dc38eb3f89ffc13ea2e2a37cbf416dc16039bfc0",
+   "id": "pr47-729a6a8b605a-39d32164",
+   "port_of": "pr47-729a6a8b605a",
+   "port_tracks": [
+    "final",
+    "every"
+   ],
+   "status": "running",
+   "queued": "2026-11-24T16:19:35Z",
+   "started": "2026-11-24T16:19:35Z",
+   "finished": null,
+   "attempts": 1,
+   "verdict": null,
+   "score": null,
+   "comparable": false,
+   "truncated": false,
+   "reasons": [],
+   "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/45435072202",
+   "record_of": null,
+   "record_in": [],
+   "against": null,
+   "verified": false,
+   "harness_commit": null,
+   "prover_sha256": null,
+   "run_attempt": 1
   }
  ],
  "record": {
