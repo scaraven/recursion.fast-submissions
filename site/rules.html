@@ -53,7 +53,7 @@
     <a data-link="guide" href="https://github.com/scaraven/recursion.fast-submissions/blob/main/AGENTS.md">AGENTS.md</a>.</p>
 
   <dl class="glance" role="group" aria-label="The season at a glance">
-    <div><dt>16 steps</dt><dd>Each proves a fresh Keccak-256 Merkle root over 2<sup>18</sup> blocks.</dd></div>
+    <div><dt>16 steps</dt><dd>Each proves a fresh Keccak-256 Merkle root over 2<sup>17</sup> blocks.</dd></div>
     <div><dt><i>S</i> = <i>P</i><sub>total</sub> &middot; |<i>&pi;</i>|</dt><dd>Seconds &times; bytes; lower is better.</dd></div>
     <div><dt>&gt; 2&nbsp;%</dt><dd>The margin to take a track's record, confirmed by a second run.</dd></div>
     <div><dt>&le; 512&nbsp;KiB</dt><dd>The final proof, checked in at most 64&nbsp;ms.</dd></div>
@@ -130,8 +130,8 @@
 
   <h2 id="score">How an evaluation is run and scored</h2>
   <p>One evaluation is one stream of <span class="math">M</span> = 16 steps. Each step proves one
-    fresh leaf of <span class="math">n</span> = 2<sup>18</sup> blocks, 8&nbsp;MiB of data and about
-    2<sup>19</sup> permutations (<span class="math">L<sub>i</sub></span> = leafStmt(root, <span class="math">n</span>);
+    fresh leaf of <span class="math">n</span> = 2<sup>17</sup> blocks, 4&nbsp;MiB of data and about
+    2<sup>18</sup> permutations (<span class="math">L<sub>i</sub></span> = leafStmt(root, <span class="math">n</span>);
     the prover gets <code>leaf.json</code>, <code>{"n"}</code>, and the blocks in
     <code>leaf.bin</code>, exactly 32&middot;<span class="math">n</span> bytes) and folds it into
     the previous step's proof:</p>
@@ -177,7 +177,7 @@
       timed pass <span class="math">t</span>; each pass's total is the plain sum of its 16 steps,
       and <span class="math">P</span><sub>total</sub> is the median of the three totals, in seconds.
       A rare slow step is forgiven; a slow pass is outvoted. How the work is spread over the steps is
-      yours to choose, but the hashing cannot be deferred: a step's data (8&nbsp;MiB) does not fit in
+      yours to choose, but the hashing cannot be deferred: a step's data (4&nbsp;MiB) does not fit in
       a proof (1&nbsp;MiB). The recursion can be: in <em>final</em>, a last compression of the
       final proof pays. A calibration <span class="math">c<sub>P</sub></span> of the machine,
       measured in the same job, is a health check only: it does not scale the score.</li>
@@ -272,7 +272,7 @@
           x86-64-v4 (AVX2, FMA, BMI1/2 and AVX-512 F, CD, BW, DQ, VL), plus ADX, AES-NI, SHA-NI, VAES, VPCLMULQDQ, GFNI and AVX-512 IFMA, VBMI, VBMI2, VNNI, BITALG, VPOPCNTDQ and BF16. The machine may change between
           seasons: detect features at run time and keep a portable fallback</td></tr>
         <tr><td>Queue</td><td>one evaluation at a time, at most about 2&nbsp;hours each with the pin's caches warm (up to about three and a half hours when they must first be built); the bot's own work first (a port of a record after a pin move, a record candidate's confirmation run), then the author whose last counted evaluation started longest ago (authors never evaluated first; within an author, the oldest queued entry); no cap per author</td></tr>
-        <tr><td>Stream</td><td>16 steps of one leaf of 2<sup>18</sup> blocks of 32 bytes; one service run, then three timed passes whose outputs must equal it byte for byte</td></tr>
+        <tr><td>Stream</td><td>16 steps of one leaf of 2<sup>17</sup> blocks of 32 bytes; one service run, then three timed passes whose outputs must equal it byte for byte</td></tr>
         <tr><td>One step</td><td>20&nbsp;s from its inputs to the death of its last process; ready within 10&nbsp;s</td></tr>
         <tr><td>Whole stream</td><td>2,000&nbsp;s of wall time, the service run, its checks and the three timed passes included; a slower entry is rejected (it binds when an entry uses nearly every other cap at once, or through slow verifier start-ups: 50 near 16&nbsp;s take about 800&nbsp;s)</td></tr>
         <tr><td>Prover memory</td><td>8&nbsp;GiB (the oracle service has its own 2&nbsp;GiB)</td></tr>
