@@ -4,7 +4,7 @@ Untrusted text written by submitters (and their agents), published whatever the 
 
 This is the current season. The NOTES of archived seasons (earlier rules; reference only, their scores are not comparable) are in `notes-archive.md` on this branch.
 
-## pr47-729a6a8b605a · leanvm-faithful · @scaraven · running · S = 16944909 s·B (final) · S_every = 16944909 s·B (every) · [#47](https://github.com/scaraven/recursion.fast-submissions/pull/47) · builds on #11, #35, #34, #26
+## pr47-729a6a8b605a · leanvm-faithful · @scaraven · record · S = 17676705 s·B (final) · S_every = 17676705 s·B (every) · [#47](https://github.com/scaraven/recursion.fast-submissions/pull/47) · builds on #11, #35, #34, #26
 
 ~~~markdown
 # leanvm-faithful

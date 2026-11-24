@@ -1,6 +1,6 @@
 {
  "version": 2,
- "updated": "2026-11-24T11:03:26Z",
+ "updated": "2026-11-24T11:41:09Z",
  "repo": "scaraven/recursion.fast-submissions",
  "core": "b7aa87328c30a2824ed8728386238b752a7c1af4",
  "margin": 0.02,
@@ -4559,41 +4559,41 @@
    "opened": "2026-11-24T10:10:07Z",
    "queued": "2026-11-24T10:10:48Z",
    "started": "2026-11-24T11:03:26Z",
-   "finished": null,
+   "finished": "2026-11-24T11:41:09Z",
    "attempts": 1,
-   "status": "running",
+   "status": "record",
    "verdict": "ACCEPT",
    "score": {
-    "S": 16944909.395715855,
-    "P_total_s": 71.15165690699996,
+    "S": 17676705.25140944,
+    "P_total_s": 74.22446694300044,
     "size_factor": 238152,
     "final_pi_bytes": 238152,
     "final_file_bytes": 787095,
     "pass_totals_s": [
-     73.37357863299997,
-     71.0246097589997,
-     71.15165690699996
+     74.51938653500002,
+     74.22446694300044,
+     70.8745054929999
     ],
-    "median_pass": 3,
+    "median_pass": 2,
     "tracks": {
      "final": "S",
      "every": "S_every"
     },
-    "S_every": 16944909.395715855,
+    "S_every": 17676705.25140944,
     "size_factor_every": 238152,
     "max_pi_bytes": 238152,
     "M": 16,
     "sum_n": 4194304,
-    "c_P": 0.9985509977862113,
+    "c_P": 1.0057649699557243,
     "c_P_provisional": false,
-    "P_total_service_run_s": 103.52478199899998
+    "P_total_service_run_s": 104.00084848499995
    },
    "comparable": true,
    "truncated": false,
    "reasons": [
     "final: no record stood in this track at the pin",
     "every: no record stood in this track at the pin",
-    "a record candidate in final, every: queued for its confirmation run (this commit, once more at this pin); the record is taken only if that run also beats the standing record"
+    "confirmed: the confirmation run also takes the record of final, every (final: 16944909 s*B, then 17676705 s*B; every: 16944909 s*B, then 17676705 s*B); the record keeps the worse run in each track"
    ],
    "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/45380561483",
    "tag": "rf-source/pr47-729a6a8b605a",
@@ -4609,15 +4609,25 @@
    "harness_commit": "b7aa87328c30a2824ed8728386238b752a7c1af4",
    "prover_sha256": "725857132ce1ae1743ffe1f6a289839b97a2d597827824512e37971cf6a4788a",
    "run_attempt": 1,
-   "confirm": {
-    "pin": "b7aa87328c30a2824ed8728386238b752a7c1af4",
-    "run_url": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/45372387372",
-    "result": "results/pr47-729a6a8b605a.json",
-    "took": [
-     "final",
-     "every"
-    ],
-    "score": {
+   "build_manifest": "c361bb11961b908135d48acbf7d66bd781a9273f9788fbcec54cfd1be1355f63",
+   "against": {
+    "final": null,
+    "every": null
+   },
+   "record_in": [
+    "final",
+    "every"
+   ],
+   "retired_in": {},
+   "prover_sources_sha256": "7bd24f416c524a87c21d9dce79114b4bbb6f66b933cc36b4aee26ed583a01dda",
+   "counted_at": "2026-11-24T10:11:42Z",
+   "result": "results/pr47-729a6a8b605a-confirm.json",
+   "confirmation": {
+    "first_run": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/45372387372",
+    "first_result": "results/pr47-729a6a8b605a.json",
+    "run": "https://github.com/scaraven/recursion.fast-submissions/actions/runs/45380561483",
+    "result": "results/pr47-729a6a8b605a-confirm.json",
+    "first_score": {
      "S": 16944909.395715855,
      "P_total_s": 71.15165690699996,
      "size_factor": 238152,
@@ -4642,30 +4652,39 @@
      "c_P_provisional": false,
      "P_total_service_run_s": 103.52478199899998
     },
-    "against": {
-     "final": null,
-     "every": null
+    "score": {
+     "S": 17676705.25140944,
+     "P_total_s": 74.22446694300044,
+     "size_factor": 238152,
+     "final_pi_bytes": 238152,
+     "final_file_bytes": 787095,
+     "pass_totals_s": [
+      74.51938653500002,
+      74.22446694300044,
+      70.8745054929999
+     ],
+     "median_pass": 2,
+     "tracks": {
+      "final": "S",
+      "every": "S_every"
+     },
+     "S_every": 17676705.25140944,
+     "size_factor_every": 238152,
+     "max_pi_bytes": 238152,
+     "M": 16,
+     "sum_n": 4194304,
+     "c_P": 1.0057649699557243,
+     "c_P_provisional": false,
+     "P_total_service_run_s": 104.00084848499995
     },
-    "record_of": {
-     "final": null,
-     "every": null
-    }
-   },
-   "build_manifest": "c361bb11961b908135d48acbf7d66bd781a9273f9788fbcec54cfd1be1355f63",
-   "against": {
-    "final": null,
-    "every": null
-   },
-   "record_in": [],
-   "retired_in": {},
-   "prover_sources_sha256": "7bd24f416c524a87c21d9dce79114b4bbb6f66b933cc36b4aee26ed583a01dda",
-   "counted_at": "2026-11-24T10:11:42Z",
-   "result": "results/pr47-729a6a8b605a.json"
+    "status": "record",
+    "score_run": "confirmation"
+   }
   }
  ],
  "record": {
-  "final": null,
-  "every": null,
+  "final": "pr47-729a6a8b605a",
+  "every": "pr47-729a6a8b605a",
   "product": null,
   "sum": null
  },
