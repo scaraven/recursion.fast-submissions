@@ -1,0 +1,15 @@
+[package]
+name = "fiat_shamir_prover"
+version.workspace = true
+edition.workspace = true
+publish = false
+license = "MIT OR Apache-2.0"
+
+[lints]
+workspace = true
+
+[dependencies]
+verifier.workspace = true
+keccak256.workspace = true
+# lvm6 patch (PATCHES.md): the v6 hash-chain backend of ProverState.
+fs6.workspace = true

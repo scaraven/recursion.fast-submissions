@@ -1,0 +1,30 @@
+# lvm6 WP R3 (dev, never shipped): `refv-full`, a wrapper of `refv::full` (refv walks §6.2–§6.4 itself since R1's merge).
+[package]
+name = "r3v"
+version.workspace = true
+edition.workspace = true
+publish = false
+license = "MIT OR Apache-2.0"
+autobins = false
+
+[[bin]]
+name = "refv-full"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+refv = { path = "../refv" }
+r3core = { path = "../../crates/r3core" }
+fs6 = { path = "../../crates/fs6" }
+verifier.workspace = true
+primitives = { package = "experimental_primitives", path = "../../crates/primitives" }
+parallel = { package = "experimental_parallel", path = "../../crates/parallel" }
+
+
+# Kept empty for build scripts that still pass them (`R3_FEATURES`); every part is always walked now.
+[features]
+sponge = []
+typed = []
+mb = []

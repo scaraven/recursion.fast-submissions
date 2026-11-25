@@ -1,0 +1,10 @@
+[package]
+name = "keccak256"
+version.workspace = true
+edition.workspace = true
+publish = false
+license = "MIT OR Apache-2.0"
+
+[lints]
+workspace = true
+
